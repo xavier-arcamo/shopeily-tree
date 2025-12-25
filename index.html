@@ -60,6 +60,51 @@
     @media (max-width: 980px){ .twoCol{grid-template-columns: 1fr;} }
     .hint{font-size:12px;color:var(--muted);line-height:1.35}
     .warn{color:#ffd58a}
+    .treeWrap{
+      position:relative;
+      height:420px;
+      border-radius:12px;
+      background:radial-gradient(circle at 20% 20%, rgba(110,231,255,.08), transparent 45%), #0c131c;
+      border:1px solid var(--border);
+      overflow:hidden;
+    }
+    .treeCanvas{
+      width:100%;
+      height:100%;
+      cursor:grab;
+    }
+    .treeCanvas.dragging{cursor:grabbing}
+    .treeControls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .treeHint{font-size:12px;color:var(--muted);margin-top:8px}
+    .nodeCard{
+      fill:#111827;
+      stroke:#334155;
+      stroke-width:1;
+    }
+    .nodeHighlight{
+      stroke:#6ee7ff;
+      stroke-width:1.5;
+    }
+    .edgeLine{
+      stroke:#475569;
+      stroke-width:1.2;
+    }
+    .partnerLine{
+      stroke:#7c7c7c;
+      stroke-width:1;
+      stroke-dasharray:5 4;
+      opacity:.7;
+    }
+    .nodeLabel{
+      font-size:11px;
+      fill:#e7eef8;
+      pointer-events:none;
+    }
+    .nodeSub{
+      font-size:10px;
+      fill:#9bb0c7;
+      pointer-events:none;
+    }
   </style>
 </head>
 <body>
@@ -147,6 +192,28 @@
     <div class="panel" id="detailPanel">
       <h2>Selected Person</h2>
       <div class="small">No person selected.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Tree View</h2>
+      <div class="toolbar" style="margin-bottom:8px">
+        <div class="left treeControls">
+          <button id="btnZoomIn">Zoom +</button>
+          <button id="btnZoomOut">Zoom −</button>
+          <button id="btnZoomReset">Reset View</button>
+        </div>
+        <div class="status" id="treeStatus">Zoom 100%</div>
+      </div>
+      <div class="treeWrap">
+        <svg id="treeSvg" class="treeCanvas" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid meet">
+          <g id="treeViewport">
+            <rect x="-6000" y="-6000" width="12000" height="12000" fill="transparent"></rect>
+          </g>
+        </svg>
+      </div>
+      <div class="treeHint">
+        Drag to pan. Scroll to zoom. Click a card to select.
+      </div>
     </div>
 
     <div class="panel">
@@ -332,6 +399,9 @@ function render(){
 
   // detail
   renderDetail();
+
+  // tree
+  renderTree();
 }
 
 function peopleArrayFiltered(){
@@ -584,6 +654,194 @@ function escapeHtml(s){
 }
 function escapeAttr(s){
   return escapeHtml(s).replaceAll('"',"&quot;");
+}
+
+/** ===========================
+ *  Tree view
+ *  =========================== */
+const treeView = {
+  scale: 1,
+  x: 0,
+  y: 0,
+  minScale: 0.4,
+  maxScale: 2.4
+};
+
+function updateTreeStatus(){
+  el("treeStatus").textContent = `Zoom ${Math.round(treeView.scale * 100)}%`;
+}
+
+function applyTreeTransform(){
+  const g = el("treeViewport");
+  g.setAttribute("transform", `translate(${treeView.x} ${treeView.y}) scale(${treeView.scale})`);
+  updateTreeStatus();
+}
+
+function clampTreeScale(next){
+  return Math.min(treeView.maxScale, Math.max(treeView.minScale, next));
+}
+
+function resetTreeView(){
+  treeView.scale = 1;
+  treeView.x = 0;
+  treeView.y = 0;
+  applyTreeTransform();
+}
+
+function renderTree(){
+  const svg = el("treeSvg");
+  const viewport = el("treeViewport");
+  viewport.innerHTML = `<rect x="-6000" y="-6000" width="12000" height="12000" fill="transparent"></rect>`;
+
+  const people = Object.values(store.people);
+  if(people.length === 0){
+    const text = document.createElementNS("http://www.w3.org/2000/svg","text");
+    text.setAttribute("x","0");
+    text.setAttribute("y","0");
+    text.setAttribute("class","nodeLabel");
+    text.textContent = "Add people to see the tree.";
+    viewport.appendChild(text);
+    applyTreeTransform();
+    return;
+  }
+
+  const parentsMap = new Map(people.map(p => [p.id, (p.parents||[]).filter(id => store.people[id])]));
+  const depthMemo = new Map();
+  function depth(id, seen=new Set()){
+    if(depthMemo.has(id)) return depthMemo.get(id);
+    if(seen.has(id)) return 0;
+    seen.add(id);
+    const parents = parentsMap.get(id) || [];
+    if(parents.length === 0){
+      depthMemo.set(id, 0);
+      return 0;
+    }
+    const d = Math.max(...parents.map(pid => depth(pid, new Set(seen)))) + 1;
+    depthMemo.set(id, d);
+    return d;
+  }
+
+  const levels = new Map();
+  for(const p of people){
+    const d = depth(p.id);
+    if(!levels.has(d)) levels.set(d, []);
+    levels.get(d).push(p);
+  }
+  for(const list of levels.values()){
+    list.sort((a,b)=> safeName(a).localeCompare(safeName(b)));
+  }
+
+  const levelKeys = Array.from(levels.keys()).sort((a,b)=>a-b);
+  const nodeSize = { w: 170, h: 64, gapX: 60, gapY: 36 };
+  const positions = new Map();
+  let maxX = 0;
+  let maxY = 0;
+  for(const [idx, level] of levelKeys.entries()){
+    const peopleAt = levels.get(level);
+    const startY = 0;
+    const totalHeight = peopleAt.length * (nodeSize.h + nodeSize.gapY) - nodeSize.gapY;
+    const offsetY = startY - totalHeight / 2;
+    const x = idx * (nodeSize.w + nodeSize.gapX);
+    maxX = Math.max(maxX, x);
+    peopleAt.forEach((p, i) => {
+      const y = offsetY + i * (nodeSize.h + nodeSize.gapY);
+      positions.set(p.id, { x, y });
+      maxY = Math.max(maxY, Math.abs(y));
+    });
+  }
+
+  // edges parent -> child
+  for(const p of people){
+    const from = positions.get(p.id);
+    if(!from) continue;
+    for(const childId of (p.children||[])){
+      const to = positions.get(childId);
+      if(!to) continue;
+      const line = document.createElementNS("http://www.w3.org/2000/svg","path");
+      const sx = from.x + nodeSize.w;
+      const sy = from.y + nodeSize.h / 2;
+      const tx = to.x;
+      const ty = to.y + nodeSize.h / 2;
+      const mx = (sx + tx) / 2;
+      line.setAttribute("d", `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ty}, ${tx} ${ty}`);
+      line.setAttribute("class","edgeLine");
+      viewport.appendChild(line);
+    }
+  }
+
+  // partner lines
+  for(const p of people){
+    const from = positions.get(p.id);
+    if(!from) continue;
+    for(const partnerId of (p.partners||[])){
+      if(partnerId <= p.id) continue;
+      const to = positions.get(partnerId);
+      if(!to) continue;
+      const line = document.createElementNS("http://www.w3.org/2000/svg","line");
+      line.setAttribute("x1", from.x + nodeSize.w / 2);
+      line.setAttribute("y1", from.y + nodeSize.h + 6);
+      line.setAttribute("x2", to.x + nodeSize.w / 2);
+      line.setAttribute("y2", to.y + nodeSize.h + 6);
+      line.setAttribute("class","partnerLine");
+      viewport.appendChild(line);
+    }
+  }
+
+  // nodes
+  for(const p of people){
+    const pos = positions.get(p.id);
+    if(!pos) continue;
+    const g = document.createElementNS("http://www.w3.org/2000/svg","g");
+    g.setAttribute("data-id", p.id);
+    g.setAttribute("transform", `translate(${pos.x} ${pos.y})`);
+
+    const rect = document.createElementNS("http://www.w3.org/2000/svg","rect");
+    rect.setAttribute("width", nodeSize.w);
+    rect.setAttribute("height", nodeSize.h);
+    rect.setAttribute("rx","10");
+    rect.setAttribute("class", `nodeCard ${p.id === selectedId ? "nodeHighlight" : ""}`);
+    g.appendChild(rect);
+
+    const name = document.createElementNS("http://www.w3.org/2000/svg","text");
+    name.setAttribute("x","10");
+    name.setAttribute("y","22");
+    name.setAttribute("class","nodeLabel");
+    name.textContent = safeName(p);
+    g.appendChild(name);
+
+    if(p.house){
+      const sub = document.createElementNS("http://www.w3.org/2000/svg","text");
+      sub.setAttribute("x","10");
+      sub.setAttribute("y","40");
+      sub.setAttribute("class","nodeSub");
+      sub.textContent = p.house;
+      g.appendChild(sub);
+    }
+
+    if(p.birth || p.death){
+      const life = document.createElementNS("http://www.w3.org/2000/svg","text");
+      life.setAttribute("x","10");
+      life.setAttribute("y","56");
+      life.setAttribute("class","nodeSub");
+      life.textContent = [p.birth || "", p.death ? `– ${p.death}` : ""].join(" ").trim();
+      g.appendChild(life);
+    }
+
+    g.addEventListener("click", () => {
+      selectedId = p.id;
+      render();
+    });
+
+    viewport.appendChild(g);
+  }
+
+  const centeredX = -maxX / 2;
+  const centeredY = 0;
+  if(treeView.x === 0 && treeView.y === 0){
+    treeView.x = centeredX;
+    treeView.y = centeredY;
+  }
+  applyTreeTransform();
 }
 
 /** ===========================
@@ -999,6 +1257,47 @@ el("btnReset").onclick = () => {
   selectedId = null;
   saveStore();
 };
+
+/** ===========================
+ *  Tree interactions
+ *  =========================== */
+const treeSvg = el("treeSvg");
+let isDragging = false;
+let dragStart = { x: 0, y: 0 };
+
+el("btnZoomIn").onclick = () => {
+  treeView.scale = clampTreeScale(treeView.scale + 0.15);
+  applyTreeTransform();
+};
+el("btnZoomOut").onclick = () => {
+  treeView.scale = clampTreeScale(treeView.scale - 0.15);
+  applyTreeTransform();
+};
+el("btnZoomReset").onclick = () => resetTreeView();
+
+treeSvg.addEventListener("wheel", (event) => {
+  event.preventDefault();
+  const direction = Math.sign(event.deltaY);
+  const next = treeView.scale + (direction > 0 ? -0.1 : 0.1);
+  treeView.scale = clampTreeScale(next);
+  applyTreeTransform();
+}, { passive: false });
+
+treeSvg.addEventListener("mousedown", (event) => {
+  isDragging = true;
+  dragStart = { x: event.clientX - treeView.x, y: event.clientY - treeView.y };
+  treeSvg.classList.add("dragging");
+});
+window.addEventListener("mousemove", (event) => {
+  if(!isDragging) return;
+  treeView.x = event.clientX - dragStart.x;
+  treeView.y = event.clientY - dragStart.y;
+  applyTreeTransform();
+});
+window.addEventListener("mouseup", () => {
+  isDragging = false;
+  treeSvg.classList.remove("dragging");
+});
 
 function autosave(){
   // lightweight: saving on most mutations is already handled via saveStore()
