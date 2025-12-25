@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Worldbuilding Family Tree Builder (Offline)</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#121923; --panel2:#0f151e; --text:#e7eef8; --muted:#9bb0c7; --accent:#6ee7ff; --danger:#ff6e8a; --ok:#7CFFA6; --border:#223145; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); color:var(--text);}
+    a{color:var(--accent)}
+    header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center;justify-content:space-between;background:linear-gradient(180deg,#0f1621,#0b0f14);}
+    header h1{margin:0;font-size:16px;font-weight:700;letter-spacing:.2px}
+    header .right{display:flex;gap:10px;align-items:center}
+    .pill{padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.03);color:var(--muted);font-size:12px}
+    main{display:grid;grid-template-columns: 420px 1fr;min-height:calc(100vh - 56px);}
+    @media (max-width: 980px){ main{grid-template-columns: 1fr; } }
+    .col{padding:14px 14px 18px; border-right:1px solid var(--border);}
+    .col:last-child{border-right:none}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px; box-shadow: 0 12px 40px rgba(0,0,0,.25);}
+    .panel h2{margin:0 0 8px;font-size:13px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.12em}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .row > *{flex:1}
+    label{display:block;font-size:12px;color:var(--muted);margin:8px 0 6px}
+    input, select, textarea{
+      width:100%; padding:10px 10px; border-radius:10px;
+      border:1px solid var(--border); background:var(--panel2); color:var(--text);
+      outline:none;
+    }
+    textarea{min-height:80px; resize:vertical}
+    button{
+      padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+      background:rgba(255,255,255,.04);color:var(--text);cursor:pointer;
+    }
+    button:hover{border-color:#2e4564}
+    button.primary{background:linear-gradient(180deg, rgba(110,231,255,.18), rgba(110,231,255,.06)); border-color: rgba(110,231,255,.35);}
+    button.danger{background:linear-gradient(180deg, rgba(255,110,138,.20), rgba(255,110,138,.06)); border-color: rgba(255,110,138,.35);}
+    button.ok{background:linear-gradient(180deg, rgba(124,255,166,.20), rgba(124,255,166,.06)); border-color: rgba(124,255,166,.35);}
+    .small{font-size:12px;color:var(--muted)}
+    .list{max-height:48vh; overflow:auto; padding-right:6px}
+    .card{
+      border:1px solid var(--border); background:rgba(255,255,255,.02);
+      border-radius:12px; padding:10px; margin-bottom:10px;
+    }
+    .cardTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .name{font-weight:800}
+    .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+    .tag{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:rgba(255,255,255,.03)}
+    .kvs{display:grid;grid-template-columns: 120px 1fr; gap:6px 10px; margin-top:10px}
+    .kvk{color:var(--muted);font-size:12px}
+    .kvv{font-size:12px}
+    .split{display:grid;grid-template-columns: 1fr 1fr; gap:10px}
+    @media (max-width: 980px){ .split{grid-template-columns: 1fr;} }
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size:12px}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+    .toolbar .left{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .status{font-size:12px;color:var(--muted)}
+    .hr{height:1px;background:var(--border);margin:10px 0}
+    .twoCol{display:grid;grid-template-columns: 1fr 1fr; gap:10px}
+    @media (max-width: 980px){ .twoCol{grid-template-columns: 1fr;} }
+    .hint{font-size:12px;color:var(--muted);line-height:1.35}
+    .warn{color:#ffd58a}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Worldbuilding Family Tree Builder</h1>
+  <div class="right">
+    <div class="pill" id="countPill">0 people</div>
+    <button class="ok" id="btnSave">Save</button>
+    <button class="danger" id="btnReset">Reset</button>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: Create/Search/List -->
+  <section class="col">
+    <div class="panel">
+      <h2>Create Person</h2>
+      <div class="row">
+        <div>
+          <label>Name *</label>
+          <input id="pName" placeholder="e.g., Aurelian Voss" />
+        </div>
+        <div>
+          <label>Sex/Gender</label>
+          <select id="pSex">
+            <option value="">(unspecified)</option>
+            <option value="M">M</option>
+            <option value="F">F</option>
+            <option value="X">X / other</option>
+          </select>
+        </div>
+      </div>
+      <div class="twoCol">
+        <div>
+          <label>Birth (string)</label>
+          <input id="pBirth" placeholder="e.g., 982 AE / Winter / 3rd Moon" />
+        </div>
+        <div>
+          <label>Death (string)</label>
+          <input id="pDeath" placeholder="optional" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>House/Clan</label>
+          <input id="pHouse" placeholder="e.g., House Voss" />
+        </div>
+        <div>
+          <label>Titles (comma-separated)</label>
+          <input id="pTitles" placeholder="e.g., Archon, Sword-Saint" />
+        </div>
+      </div>
+      <label>Notes</label>
+      <textarea id="pNotes" placeholder="Lore notes, personality, plot hooks…"></textarea>
+      <div class="row">
+        <button class="primary" id="btnAdd">Add Person</button>
+        <button id="btnAddAndSelect">Add + Select</button>
+      </div>
+      <div class="hint">
+        Tip: Birth/Death are freeform so you can use your own calendar (AE, regnal years, etc.).
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Search & People</h2>
+      <label>Search</label>
+      <input id="q" placeholder="name, house, title…" />
+      <div class="toolbar" style="margin-top:10px">
+        <div class="left">
+          <button id="btnSortName">Sort: Name</button>
+          <button id="btnSortHouse">Sort: House</button>
+        </div>
+        <div class="status" id="status">Autosave: on</div>
+      </div>
+      <div class="hr"></div>
+      <div class="list" id="peopleList"></div>
+      <div class="hint">
+        Click a person to edit & link relationships.
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: Detail / Relationships / Export -->
+  <section class="col">
+    <div class="panel" id="detailPanel">
+      <h2>Selected Person</h2>
+      <div class="small">No person selected.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Export / Import</h2>
+
+      <div class="split">
+        <div>
+          <label>Format</label>
+          <select id="exportFormat">
+            <option value="json">JSON (recommended)</option>
+            <option value="yaml">YAML</option>
+            <option value="dot">Graphviz DOT</option>
+            <option value="mermaid">Mermaid (graph TD)</option>
+            <option value="gedcom">GEDCOM (basic)</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-end">
+          <button class="primary" id="btnExport">Generate Export</button>
+          <button id="btnCopy">Copy</button>
+          <button id="btnDownload">Download</button>
+        </div>
+      </div>
+
+      <label>Export Output</label>
+      <textarea id="out" class="mono" placeholder="Click “Generate Export” …"></textarea>
+
+      <div class="hr"></div>
+
+      <label>Import (JSON)</label>
+      <textarea id="importBox" class="mono" placeholder='Paste JSON export here, then click “Import JSON”'></textarea>
+      <div class="row">
+        <button class="ok" id="btnImport">Import JSON</button>
+        <button id="btnMergeImport">Merge JSON (keep existing)</button>
+      </div>
+
+      <div class="hint">
+        <span class="warn">Note:</span> GEDCOM export is “lite” (enough for many tools, but not full fidelity for fantasy calendars).
+        For maximum interoperability, use JSON as your source of truth, then generate DOT/Mermaid for visuals.
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+/** ===========================
+ *  Data model
+ *  ===========================
+ *  store = {
+ *    people: {
+ *      [id]: {
+ *        id, name, sex, birth, death, house,
+ *        titles: string[],
+ *        notes: string,
+ *        parents: string[],   // up to 2 typically, but we don't enforce
+ *        partners: string[],  // spouses/partners
+ *        children: string[]   // derived or manual; we keep it explicit for performance on large trees
+ *      }
+ *    },
+ *    meta: { version, updatedAt }
+ *  }
+ */
+const STORAGE_KEY = "wb_family_tree_v1";
+let store = loadStore() ?? freshStore();
+let selectedId = null;
+let sortMode = "name";
+
+function freshStore(){
+  return { people: {}, meta: { version: 1, updatedAt: new Date().toISOString() } };
+}
+function uid(){
+  // short stable-ish id: p_ + 10 chars
+  return "p_" + Math.random().toString(36).slice(2, 12);
+}
+function saveStore(){
+  store.meta.updatedAt = new Date().toISOString();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  render();
+}
+function loadStore(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return null;
+    const parsed = JSON.parse(raw);
+    // basic shape check
+    if(!parsed || typeof parsed !== "object" || !parsed.people) return null;
+    return parsed;
+  }catch{ return null; }
+}
+
+function personById(id){ return store.people[id] || null; }
+
+function normalizeTitles(s){
+  return (s || "")
+    .split(",")
+    .map(x => x.trim())
+    .filter(Boolean);
+}
+function safeName(p){ return (p?.name || "").trim() || "(unnamed)"; }
+
+function addPerson({ name, sex, birth, death, house, titles, notes }){
+  const id = uid();
+  store.people[id] = {
+    id,
+    name: (name || "").trim(),
+    sex: sex || "",
+    birth: birth || "",
+    death: death || "",
+    house: house || "",
+    titles: titles || [],
+    notes: notes || "",
+    parents: [],
+    partners: [],
+    children: []
+  };
+  return id;
+}
+
+function removeIdFromArray(arr, id){
+  const i = arr.indexOf(id);
+  if(i >= 0) arr.splice(i,1);
+}
+
+function linkParentChild(parentId, childId){
+  const parent = personById(parentId);
+  const child = personById(childId);
+  if(!parent || !child) return;
+
+  if(!parent.children.includes(childId)) parent.children.push(childId);
+  if(!child.parents.includes(parentId)) child.parents.push(parentId);
+}
+
+function unlinkParentChild(parentId, childId){
+  const parent = personById(parentId);
+  const child = personById(childId);
+  if(!parent || !child) return;
+
+  removeIdFromArray(parent.children, childId);
+  removeIdFromArray(child.parents, parentId);
+}
+
+function linkPartners(aId, bId){
+  const a = personById(aId);
+  const b = personById(bId);
+  if(!a || !b || aId === bId) return;
+  if(!a.partners.includes(bId)) a.partners.push(bId);
+  if(!b.partners.includes(aId)) b.partners.push(aId);
+}
+
+function unlinkPartners(aId, bId){
+  const a = personById(aId);
+  const b = personById(bId);
+  if(!a || !b) return;
+  removeIdFromArray(a.partners, bId);
+  removeIdFromArray(b.partners, aId);
+}
+
+function deletePerson(id){
+  const p = personById(id);
+  if(!p) return;
+
+  // remove relationships from others
+  for(const otherId of Object.keys(store.people)){
+    const o = store.people[otherId];
+    removeIdFromArray(o.parents, id);
+    removeIdFromArray(o.children, id);
+    removeIdFromArray(o.partners, id);
+  }
+  delete store.people[id];
+  if(selectedId === id) selectedId = null;
+}
+
+/** ===========================
+ *  Rendering
+ *  =========================== */
+const el = (id) => document.getElementById(id);
+
+function render(){
+  // count
+  el("countPill").textContent = `${Object.keys(store.people).length} people`;
+
+  // list
+  renderPeopleList();
+
+  // detail
+  renderDetail();
+}
+
+function peopleArrayFiltered(){
+  const q = (el("q").value || "").trim().toLowerCase();
+  let arr = Object.values(store.people);
+
+  if(q){
+    arr = arr.filter(p => {
+      const hay = [
+        p.name, p.house, (p.titles||[]).join(" "), p.birth, p.death, p.notes
+      ].join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  arr.sort((a,b) => {
+    if(sortMode === "house"){
+      const ha = (a.house||"").toLowerCase();
+      const hb = (b.house||"").toLowerCase();
+      if(ha !== hb) return ha.localeCompare(hb);
+    }
+    return safeName(a).toLowerCase().localeCompare(safeName(b).toLowerCase());
+  });
+
+  return arr;
+}
+
+function renderPeopleList(){
+  const list = el("peopleList");
+  list.innerHTML = "";
+
+  const arr = peopleArrayFiltered();
+  for(const p of arr){
+    const div = document.createElement("div");
+    div.className = "card";
+    div.style.borderColor = (p.id === selectedId) ? "rgba(110,231,255,.45)" : "var(--border)";
+    div.innerHTML = `
+      <div class="cardTop">
+        <div>
+          <div class="name">${escapeHtml(safeName(p))}</div>
+          <div class="small">${escapeHtml(p.house || "")}${p.house && p.birth ? " • " : ""}${escapeHtml(p.birth || "")}</div>
+          <div class="tags">
+            ${(p.titles||[]).slice(0,6).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
+            ${(p.titles||[]).length>6 ? `<span class="tag">+${(p.titles||[]).length-6}</span>` : ""}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button data-act="select" data-id="${p.id}">Select</button>
+        </div>
+      </div>
+    `;
+    div.querySelector('[data-act="select"]').onclick = () => { selectedId = p.id; render(); };
+    list.appendChild(div);
+  }
+
+  if(arr.length === 0){
+    list.innerHTML = `<div class="small">No results.</div>`;
+  }
+}
+
+function renderDetail(){
+  const panel = el("detailPanel");
+  const p = selectedId ? personById(selectedId) : null;
+  if(!p){
+    panel.innerHTML = `<h2>Selected Person</h2><div class="small">No person selected.</div>`;
+    return;
+  }
+
+  // build dropdown options (exclude selected)
+  const options = Object.values(store.people)
+    .filter(x => x.id !== p.id)
+    .sort((a,b)=>safeName(a).localeCompare(safeName(b)))
+    .map(x => `<option value="${x.id}">${escapeHtml(safeName(x))}${x.house ? " — " + escapeHtml(x.house) : ""}</option>`)
+    .join("");
+
+  const parents = (p.parents||[]).map(id => personById(id)).filter(Boolean);
+  const partners = (p.partners||[]).map(id => personById(id)).filter(Boolean);
+  const children = (p.children||[]).map(id => personById(id)).filter(Boolean);
+
+  panel.innerHTML = `
+    <h2>Selected Person</h2>
+
+    <div class="row">
+      <div>
+        <label>Name</label>
+        <input id="eName" value="${escapeAttr(p.name)}" />
+      </div>
+      <div>
+        <label>Sex/Gender</label>
+        <select id="eSex">
+          <option value="" ${p.sex===""?"selected":""}>(unspecified)</option>
+          <option value="M" ${p.sex==="M"?"selected":""}>M</option>
+          <option value="F" ${p.sex==="F"?"selected":""}>F</option>
+          <option value="X" ${p.sex==="X"?"selected":""}>X / other</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="twoCol">
+      <div>
+        <label>Birth</label>
+        <input id="eBirth" value="${escapeAttr(p.birth||"")}" />
+      </div>
+      <div>
+        <label>Death</label>
+        <input id="eDeath" value="${escapeAttr(p.death||"")}" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>House/Clan</label>
+        <input id="eHouse" value="${escapeAttr(p.house||"")}" />
+      </div>
+      <div>
+        <label>Titles (comma-separated)</label>
+        <input id="eTitles" value="${escapeAttr((p.titles||[]).join(", "))}" />
+      </div>
+    </div>
+
+    <label>Notes</label>
+    <textarea id="eNotes">${escapeHtml(p.notes||"")}</textarea>
+
+    <div class="row">
+      <button class="ok" id="btnUpdate">Update</button>
+      <button class="danger" id="btnDelete">Delete Person</button>
+    </div>
+
+    <div class="hr"></div>
+
+    <h2>Relationships</h2>
+
+    <div class="split">
+      <div class="card" style="margin:0">
+        <div class="name">Parents</div>
+        <div class="small">${parents.length ? parents.map(x => escapeHtml(safeName(x))).join(", ") : "None"}</div>
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+          <select id="relParentSel"><option value="">Choose person…</option>${options}</select>
+          <button id="btnAddParent">Add Parent</button>
+        </div>
+        <div style="margin-top:10px">
+          ${parents.map(x => `
+            <div class="row" style="align-items:center;margin-top:6px">
+              <div class="small" style="flex:2">${escapeHtml(safeName(x))}</div>
+              <button data-unlink-parent="${x.id}" class="danger" style="flex:1">Remove</button>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="card" style="margin:0">
+        <div class="name">Partners</div>
+        <div class="small">${partners.length ? partners.map(x => escapeHtml(safeName(x))).join(", ") : "None"}</div>
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+          <select id="relPartnerSel"><option value="">Choose person…</option>${options}</select>
+          <button id="btnAddPartner">Add Partner</button>
+        </div>
+        <div style="margin-top:10px">
+          ${partners.map(x => `
+            <div class="row" style="align-items:center;margin-top:6px">
+              <div class="small" style="flex:2">${escapeHtml(safeName(x))}</div>
+              <button data-unlink-partner="${x.id}" class="danger" style="flex:1">Remove</button>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:10px">
+      <div class="name">Children</div>
+      <div class="small">${children.length ? children.map(x => escapeHtml(safeName(x))).join(", ") : "None"}</div>
+
+      <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+        <select id="relChildSel"><option value="">Choose person…</option>${options}</select>
+        <button id="btnAddChild">Add Child</button>
+      </div>
+
+      <div style="margin-top:10px">
+        ${children.map(x => `
+          <div class="row" style="align-items:center;margin-top:6px">
+            <div class="small" style="flex:2">${escapeHtml(safeName(x))}</div>
+            <button data-unlink-child="${x.id}" class="danger" style="flex:1">Remove</button>
+          </div>
+        `).join("")}
+      </div>
+
+      <div class="hint" style="margin-top:10px">
+        “Add Child” links both ways (child ↔ parent). Same for parents and partners.
+      </div>
+    </div>
+  `;
+
+  // hook events
+  el("btnUpdate").onclick = () => {
+    const p2 = personById(p.id);
+    if(!p2) return;
+    p2.name = el("eName").value.trim();
+    p2.sex = el("eSex").value;
+    p2.birth = el("eBirth").value;
+    p2.death = el("eDeath").value;
+    p2.house = el("eHouse").value;
+    p2.titles = normalizeTitles(el("eTitles").value);
+    p2.notes = el("eNotes").value;
+    saveStore();
+  };
+
+  el("btnDelete").onclick = () => {
+    if(!confirm(`Delete ${safeName(p)}? This will remove their links too.`)) return;
+    deletePerson(p.id);
+    saveStore();
+  };
+
+  el("btnAddParent").onclick = () => {
+    const other = el("relParentSel").value;
+    if(!other) return;
+    linkParentChild(other, p.id);
+    saveStore();
+  };
+
+  el("btnAddChild").onclick = () => {
+    const other = el("relChildSel").value;
+    if(!other) return;
+    linkParentChild(p.id, other);
+    saveStore();
+  };
+
+  el("btnAddPartner").onclick = () => {
+    const other = el("relPartnerSel").value;
+    if(!other) return;
+    linkPartners(p.id, other);
+    saveStore();
+  };
+
+  panel.querySelectorAll("[data-unlink-parent]").forEach(btn => {
+    btn.onclick = () => { unlinkParentChild(btn.getAttribute("data-unlink-parent"), p.id); saveStore(); };
+  });
+  panel.querySelectorAll("[data-unlink-child]").forEach(btn => {
+    btn.onclick = () => { unlinkParentChild(p.id, btn.getAttribute("data-unlink-child")); saveStore(); };
+  });
+  panel.querySelectorAll("[data-unlink-partner]").forEach(btn => {
+    btn.onclick = () => { unlinkPartners(p.id, btn.getAttribute("data-unlink-partner")); saveStore(); };
+  });
+}
+
+function escapeHtml(s){
+  return (s ?? "").toString()
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;");
+}
+function escapeAttr(s){
+  return escapeHtml(s).replaceAll('"',"&quot;");
+}
+
+/** ===========================
+ *  Export formats
+ *  =========================== */
+
+function exportJSON(){
+  return JSON.stringify(store, null, 2);
+}
+
+function toYAML(obj, indent=0){
+  const sp = "  ".repeat(indent);
+  if(obj === null) return "null";
+  if(typeof obj === "string"){
+    // quote if needed
+    if(obj === "" || /[:\n\-\{\}\[\],#&*!|>'"%@`]/.test(obj) || /^\s|\s$/.test(obj)){
+      return JSON.stringify(obj); // safe quoting
+    }
+    return obj;
+  }
+  if(typeof obj === "number" || typeof obj === "boolean") return String(obj);
+  if(Array.isArray(obj)){
+    if(obj.length === 0) return "[]";
+    return obj.map(v => `${sp}- ${toYAML(v, indent+1).replace(/^  /,"")}`).join("\n");
+  }
+  // object
+  const keys = Object.keys(obj);
+  if(keys.length === 0) return "{}";
+  return keys.map(k => {
+    const v = obj[k];
+    if(v && typeof v === "object"){
+      return `${sp}${k}:\n${toYAML(v, indent+1)}`;
+    }else{
+      return `${sp}${k}: ${toYAML(v, indent+1)}`;
+    }
+  }).join("\n");
+}
+
+function exportYAML(){
+  return toYAML(store, 0);
+}
+
+function exportDOT(){
+  // Directed edges: parent -> child
+  // Partner edges: undirected-ish (we'll do dir=none)
+  const lines = [];
+  lines.push('digraph FamilyTree {');
+  lines.push('  rankdir=TB;');
+  lines.push('  node [shape=box, style="rounded,filled", fillcolor="#111827", color="#334155", fontcolor="#e5e7eb"];');
+  lines.push('  edge [color="#64748b"];');
+
+  // nodes
+  for(const p of Object.values(store.people)){
+    const label = [
+      safeName(p),
+      p.house ? `\\n${p.house}` : "",
+      (p.titles && p.titles.length) ? `\\n(${p.titles.slice(0,3).join(", ")}${p.titles.length>3?"…":""})` : ""
+    ].join("");
+    lines.push(`  "${p.id}" [label="${escapeDot(label)}"];`);
+  }
+
+  // parent-child edges
+  for(const p of Object.values(store.people)){
+    for(const c of (p.children||[])){
+      if(store.people[c]) lines.push(`  "${p.id}" -> "${c}";`);
+    }
+  }
+
+  // partner edges
+  lines.push('  // partners');
+  for(const p of Object.values(store.people)){
+    for(const partnerId of (p.partners||[])){
+      if(partnerId > p.id) { // avoid duplicates with simple ordering
+        if(store.people[partnerId]) lines.push(`  "${p.id}" -> "${partnerId}" [dir=none, style=dashed];`);
+      }
+    }
+  }
+
+  lines.push('}');
+  return lines.join("\n");
+}
+function escapeDot(s){
+  return (s ?? "").toString().replaceAll("\\","\\\\").replaceAll('"','\\"');
+}
+
+function exportMermaid(){
+  // Mermaid graph TD
+  // parent --> child; partner as --- (undirected) using --- is ok in flowcharts
+  const lines = [];
+  lines.push("graph TD");
+  // nodes
+  for(const p of Object.values(store.people)){
+    const label = safeName(p) + (p.house ? `\\n${p.house}` : "");
+    lines.push(`  ${p.id}["${escapeMermaid(label)}"]`);
+  }
+  // parent-child edges
+  for(const p of Object.values(store.people)){
+    for(const c of (p.children||[])){
+      if(store.people[c]) lines.push(`  ${p.id} --> ${c}`);
+    }
+  }
+  // partners
+  lines.push("  %% partners (dashed)");
+  for(const p of Object.values(store.people)){
+    for(const partnerId of (p.partners||[])){
+      if(partnerId > p.id && store.people[partnerId]){
+        lines.push(`  ${p.id} -.-> ${partnerId}`);
+      }
+    }
+  }
+  return lines.join("\n");
+}
+function escapeMermaid(s){
+  return (s ?? "").toString().replaceAll('"', '\\"');
+}
+
+function exportGEDCOM(){
+  // Minimal GEDCOM 5.5-ish: INDI + FAM.
+  // We'll generate FAM records for each partner pair and connect children when both parents are in that family.
+  // If a child has multiple parents not in a partner pair, they'll still appear via FAM with first two parents found.
+  const people = Object.values(store.people);
+  const lines = [];
+  lines.push("0 HEAD");
+  lines.push("1 SOUR WorldbuildingFamilyTreeApp");
+  lines.push("1 GEDC");
+  lines.push("2 VERS 5.5");
+  lines.push("1 CHAR UTF-8");
+  lines.push("1 DATE " + new Date().toISOString().slice(0,10));
+
+  // map person id -> GEDCOM @I#
+  const indiId = new Map();
+  people.forEach((p, idx) => indiId.set(p.id, `@I${idx+1}@`));
+
+  // Build partner families
+  const famKeys = new Set();
+  const fams = []; // {key, aId, bId, children: []}
+  function famKey(a,b){ return [a,b].sort().join("__"); }
+
+  for(const p of people){
+    for(const partner of (p.partners||[])){
+      if(!store.people[partner]) continue;
+      const key = famKey(p.id, partner);
+      if(!famKeys.has(key)){
+        famKeys.add(key);
+        fams.push({ key, aId: p.id, bId: partner, children: [] });
+      }
+    }
+  }
+
+  // Add children to partner fam if child has both parents in that partner pair
+  for(const fam of fams){
+    const a = personById(fam.aId);
+    const b = personById(fam.bId);
+    if(!a || !b) continue;
+    // children that appear in either parent's children list
+    const cand = new Set([...(a.children||[]), ...(b.children||[])]);
+    for(const cId of cand){
+      const c = personById(cId);
+      if(!c) continue;
+      const hasA = (c.parents||[]).includes(a.id);
+      const hasB = (c.parents||[]).includes(b.id);
+      if(hasA && hasB) fam.children.push(cId);
+    }
+  }
+
+  // For children with parents but no partner family, create a synthetic family with first 2 parents (or 1)
+  const usedChild = new Set(fams.flatMap(f => f.children));
+  for(const c of people){
+    if((c.parents||[]).length === 0) continue;
+    if(usedChild.has(c.id)) continue;
+    const p1 = c.parents[0];
+    const p2 = c.parents[1] || null;
+    const key = famKey(p1, p2 || ("single__" + p1 + "__" + c.id));
+    fams.push({ key, aId: p1, bId: p2, children: [c.id], synthetic: true });
+  }
+
+  // write INDI
+  people.forEach(p => {
+    lines.push(`0 ${indiId.get(p.id)} INDI`);
+    lines.push(`1 NAME ${p.name || "?"}`);
+    if(p.sex) lines.push(`1 SEX ${p.sex === "X" ? "U" : p.sex}`); // U for unknown/other-ish
+    if(p.birth) {
+      lines.push("1 BIRT");
+      lines.push(`2 DATE ${p.birth}`);
+    }
+    if(p.death) {
+      lines.push("1 DEAT");
+      lines.push(`2 DATE ${p.death}`);
+    }
+    if(p.house) lines.push(`1 NOTE House/Clan: ${p.house}`);
+    if(p.titles && p.titles.length) lines.push(`1 NOTE Titles: ${p.titles.join(", ")}`);
+    if(p.notes) lines.push(`1 NOTE ${p.notes.replaceAll("\n"," ")}`);
+  });
+
+  // assign @F#
+  const famId = new Map();
+  fams.forEach((f, idx) => famId.set(f.key, `@F${idx+1}@`));
+
+  // connect INDI to FAMS/FAMC
+  // - spouses: FAMS
+  // - children: FAMC for first matching family they appear in
+  // We'll do a second pass and append these links by re-writing: easiest is to add them as NOTE-like blocks? We'll do it properly by emitting extra lines right after INDI, so we need indices—keeping it simple: emit extra "1 FAMS/FAMC" immediately after creation by re-looping with computed matches.
+  // We'll implement by building lookup maps and re-export in one pass with those lines included (so redo the INDI emission).
+  lines.splice( lines.findIndex(x => x.startsWith("0 @I1@ INDI")), lines.length ); // remove INDI blocks we wrote
+  // Re-add HEAD and then INDI with links.
+  const head = [];
+  head.push("0 HEAD");
+  head.push("1 SOUR WorldbuildingFamilyTreeApp");
+  head.push("1 GEDC");
+  head.push("2 VERS 5.5");
+  head.push("1 CHAR UTF-8");
+  head.push("1 DATE " + new Date().toISOString().slice(0,10));
+  lines.length = 0;
+  lines.push(...head);
+
+  // Build lookups
+  const spouseFams = new Map(); // personId -> Set(famKey)
+  const childFam = new Map();   // childId -> famKey
+  for(const f of fams){
+    if(f.aId && store.people[f.aId]){
+      if(!spouseFams.has(f.aId)) spouseFams.set(f.aId, new Set());
+      spouseFams.get(f.aId).add(f.key);
+    }
+    if(f.bId && store.people[f.bId]){
+      if(!spouseFams.has(f.bId)) spouseFams.set(f.bId, new Set());
+      spouseFams.get(f.bId).add(f.key);
+    }
+    for(const c of (f.children||[])){
+      if(!childFam.has(c)) childFam.set(c, f.key);
+    }
+  }
+
+  // emit INDI with links
+  people.forEach(p => {
+    lines.push(`0 ${indiId.get(p.id)} INDI`);
+    lines.push(`1 NAME ${p.name || "?"}`);
+    if(p.sex) lines.push(`1 SEX ${p.sex === "X" ? "U" : p.sex}`);
+    // family links
+    const famc = childFam.get(p.id);
+    if(famc) lines.push(`1 FAMC ${famId.get(famc)}`);
+    const famsSet = spouseFams.get(p.id);
+    if(famsSet){
+      for(const fk of famsSet){
+        lines.push(`1 FAMS ${famId.get(fk)}`);
+      }
+    }
+    if(p.birth) { lines.push("1 BIRT"); lines.push(`2 DATE ${p.birth}`); }
+    if(p.death) { lines.push("1 DEAT"); lines.push(`2 DATE ${p.death}`); }
+    if(p.house) lines.push(`1 NOTE House/Clan: ${p.house}`);
+    if(p.titles && p.titles.length) lines.push(`1 NOTE Titles: ${p.titles.join(", ")}`);
+    if(p.notes) lines.push(`1 NOTE ${p.notes.replaceAll("\n"," ")}`);
+  });
+
+  // emit FAM
+  fams.forEach(f => {
+    lines.push(`0 ${famId.get(f.key)} FAM`);
+    if(f.aId && store.people[f.aId]) lines.push(`1 HUSB ${indiId.get(f.aId)}`);
+    if(f.bId && store.people[f.bId]) lines.push(`1 WIFE ${indiId.get(f.bId)}`);
+    for(const cId of (f.children||[])){
+      if(store.people[cId]) lines.push(`1 CHIL ${indiId.get(cId)}`);
+    }
+    if(f.synthetic) lines.push(`1 NOTE Synthetic family (no explicit partnership)`);
+  });
+
+  lines.push("0 TRLR");
+  return lines.join("\n");
+}
+
+function generateExport(){
+  const fmt = el("exportFormat").value;
+  let txt = "";
+  if(fmt === "json") txt = exportJSON();
+  else if(fmt === "yaml") txt = exportYAML();
+  else if(fmt === "dot") txt = exportDOT();
+  else if(fmt === "mermaid") txt = exportMermaid();
+  else if(fmt === "gedcom") txt = exportGEDCOM();
+  el("out").value = txt;
+}
+
+/** ===========================
+ *  Import
+ *  =========================== */
+function importJSON({ merge }){
+  const raw = el("importBox").value.trim();
+  if(!raw) return alert("Paste JSON first.");
+  let parsed;
+  try{ parsed = JSON.parse(raw); }
+  catch{ return alert("Invalid JSON."); }
+
+  if(!parsed || typeof parsed !== "object" || !parsed.people){
+    return alert("JSON doesn't look like an export from this app (missing people).");
+  }
+
+  if(!merge){
+    store = parsed;
+    selectedId = null;
+    saveStore();
+    return;
+  }
+
+  // merge: keep existing, add new ids; if conflict, rename incoming id
+  const incomingPeople = parsed.people || {};
+  for(const [id, p] of Object.entries(incomingPeople)){
+    let newId = id;
+    while(store.people[newId]) newId = uid();
+
+    // clone and rewrite internal links if id changed
+    const cloned = JSON.parse(JSON.stringify(p));
+    cloned.id = newId;
+
+    // remap references when id changes: we only remap self-id; other ids are left as-is (best-effort)
+    if(newId !== id){
+      // if any other incoming person refers to old id, that won't be fixed here (complex).
+      // We'll at least keep this person consistent internally.
+    }
+
+    store.people[newId] = cloned;
+  }
+  saveStore();
+  alert("Merged. Note: references between imported records aren’t fully remapped when IDs collide. Use non-merge import for perfect fidelity.");
+}
+
+/** ===========================
+ *  Wire UI
+ *  =========================== */
+el("btnAdd").onclick = () => {
+  const name = el("pName").value.trim();
+  if(!name) return alert("Name is required.");
+  addPerson({
+    name,
+    sex: el("pSex").value,
+    birth: el("pBirth").value,
+    death: el("pDeath").value,
+    house: el("pHouse").value,
+    titles: normalizeTitles(el("pTitles").value),
+    notes: el("pNotes").value
+  });
+  clearCreateForm();
+  saveStore();
+};
+
+el("btnAddAndSelect").onclick = () => {
+  const name = el("pName").value.trim();
+  if(!name) return alert("Name is required.");
+  const id = addPerson({
+    name,
+    sex: el("pSex").value,
+    birth: el("pBirth").value,
+    death: el("pDeath").value,
+    house: el("pHouse").value,
+    titles: normalizeTitles(el("pTitles").value),
+    notes: el("pNotes").value
+  });
+  clearCreateForm();
+  selectedId = id;
+  saveStore();
+};
+
+function clearCreateForm(){
+  el("pName").value = "";
+  el("pSex").value = "";
+  el("pBirth").value = "";
+  el("pDeath").value = "";
+  el("pHouse").value = "";
+  el("pTitles").value = "";
+  el("pNotes").value = "";
+}
+
+el("q").addEventListener("input", () => renderPeopleList());
+el("btnSortName").onclick = () => { sortMode = "name"; renderPeopleList(); };
+el("btnSortHouse").onclick = () => { sortMode = "house"; renderPeopleList(); };
+
+el("btnExport").onclick = generateExport;
+
+el("btnCopy").onclick = async () => {
+  const txt = el("out").value;
+  if(!txt) return;
+  try{
+    await navigator.clipboard.writeText(txt);
+    alert("Copied!");
+  }catch{
+    alert("Copy failed (browser restriction). Select and copy manually.");
+  }
+};
+
+el("btnDownload").onclick = () => {
+  const txt = el("out").value;
+  if(!txt) return alert("Generate export first.");
+  const fmt = el("exportFormat").value;
+  const ext = fmt === "json" ? "json"
+            : fmt === "yaml" ? "yml"
+            : fmt === "dot" ? "dot"
+            : fmt === "mermaid" ? "mmd"
+            : "ged";
+  const blob = new Blob([txt], {type:"text/plain;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `family_tree_export.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+};
+
+el("btnImport").onclick = () => importJSON({ merge:false });
+el("btnMergeImport").onclick = () => importJSON({ merge:true });
+
+el("btnSave").onclick = () => saveStore();
+
+el("btnReset").onclick = () => {
+  if(!confirm("Reset will erase the saved tree in this browser. Continue?")) return;
+  store = freshStore();
+  selectedId = null;
+  saveStore();
+};
+
+function autosave(){
+  // lightweight: saving on most mutations is already handled via saveStore()
+  el("status").textContent = "Autosave: on • Last updated: " + (store.meta.updatedAt ? store.meta.updatedAt.slice(0,19).replace("T"," ") : "—");
+}
+setInterval(autosave, 1200);
+
+render();
+</script>
+</body>
+</html>
