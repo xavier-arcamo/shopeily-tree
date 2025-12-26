@@ -5,7 +5,26 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Worldbuilding Family Tree Builder (Offline)</title>
   <style>
-    :root { --bg:#0b0f14; --panel:#121923; --panel2:#0f151e; --text:#e7eef8; --muted:#9bb0c7; --accent:#6ee7ff; --danger:#ff6e8a; --ok:#7CFFA6; --border:#223145; }
+    :root {
+      --bg:#0b0f14;
+      --panel:#121923;
+      --panel2:#0f151e;
+      --text:#e7eef8;
+      --muted:#9bb0c7;
+      --accent:#6ee7ff;
+      --danger:#ff6e8a;
+      --ok:#7CFFA6;
+      --border:#223145;
+      --tree-bg:#0c131c;
+      --tree-glow:rgba(110,231,255,.08);
+      --node-bg:#111827;
+      --node-stroke:#334155;
+      --node-highlight:#6ee7ff;
+      --node-text:#e7eef8;
+      --node-sub:#9bb0c7;
+      --edge:#475569;
+      --partner:#7c7c7c;
+    }
     *{box-sizing:border-box}
     body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); color:var(--text);}
     a{color:var(--accent)}
@@ -26,6 +45,12 @@
       width:100%; padding:10px 10px; border-radius:10px;
       border:1px solid var(--border); background:var(--panel2); color:var(--text);
       outline:none;
+    }
+    input[type="color"]{
+      padding:0;
+      height:38px;
+      border-radius:10px;
+      overflow:hidden;
     }
     textarea{min-height:80px; resize:vertical}
     button{
@@ -64,7 +89,7 @@
       position:relative;
       height:420px;
       border-radius:12px;
-      background:radial-gradient(circle at 20% 20%, rgba(110,231,255,.08), transparent 45%), #0c131c;
+      background:radial-gradient(circle at 20% 20%, var(--tree-glow), transparent 45%), var(--tree-bg);
       border:1px solid var(--border);
       overflow:hidden;
     }
@@ -77,33 +102,54 @@
     .treeControls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .treeHint{font-size:12px;color:var(--muted);margin-top:8px}
     .nodeCard{
-      fill:#111827;
-      stroke:#334155;
+      fill:var(--node-bg);
+      stroke:var(--node-stroke);
       stroke-width:1;
     }
     .nodeHighlight{
-      stroke:#6ee7ff;
+      stroke:var(--node-highlight);
       stroke-width:1.5;
     }
     .edgeLine{
-      stroke:#475569;
+      stroke:var(--edge);
       stroke-width:1.2;
     }
     .partnerLine{
-      stroke:#7c7c7c;
+      stroke:var(--partner);
       stroke-width:1;
       stroke-dasharray:5 4;
       opacity:.7;
     }
     .nodeLabel{
       font-size:11px;
-      fill:#e7eef8;
+      fill:var(--node-text);
       pointer-events:none;
     }
     .nodeSub{
       font-size:10px;
-      fill:#9bb0c7;
+      fill:var(--node-sub);
       pointer-events:none;
+    }
+    .themeGrid{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:10px;
+      margin-top:10px;
+    }
+    @media (max-width: 980px){ .themeGrid{grid-template-columns: 1fr;} }
+    .themeField{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:8px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.02);
+    }
+    .themeField span{
+      font-size:12px;
+      color:var(--muted);
+      min-width:92px;
     }
   </style>
 </head>
@@ -217,6 +263,24 @@
     </div>
 
     <div class="panel">
+      <h2>Theme Studio</h2>
+      <div class="row">
+        <div>
+          <label>Preset</label>
+          <select id="themePreset"></select>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-end">
+          <button id="btnApplyPreset" class="primary">Apply Preset</button>
+          <button id="btnResetTheme">Reset</button>
+        </div>
+      </div>
+      <div class="themeGrid" id="themeGrid"></div>
+      <div class="hint" style="margin-top:10px">
+        Adjust colors to instantly re-skin the workspace and tree. Changes are saved locally.
+      </div>
+    </div>
+
+    <div class="panel">
       <h2>Export / Import</h2>
 
       <div class="split">
@@ -276,9 +340,11 @@
  *  }
  */
 const STORAGE_KEY = "wb_family_tree_v1";
+const THEME_KEY = "wb_family_tree_theme_v1";
 let store = loadStore() ?? freshStore();
 let selectedId = null;
 let sortMode = "name";
+let currentTheme = loadTheme();
 
 function freshStore(){
   return { people: {}, meta: { version: 1, updatedAt: new Date().toISOString() } };
@@ -304,6 +370,132 @@ function loadStore(){
 }
 
 function personById(id){ return store.people[id] || null; }
+
+function defaultTheme(){
+  return {
+    name: "Obsidian Glow",
+    values: {
+      "--bg":"#0b0f14",
+      "--panel":"#121923",
+      "--panel2":"#0f151e",
+      "--text":"#e7eef8",
+      "--muted":"#9bb0c7",
+      "--accent":"#6ee7ff",
+      "--danger":"#ff6e8a",
+      "--ok":"#7CFFA6",
+      "--border":"#223145",
+      "--tree-bg":"#0c131c",
+      "--tree-glow":"rgba(110,231,255,.08)",
+      "--node-bg":"#111827",
+      "--node-stroke":"#334155",
+      "--node-highlight":"#6ee7ff",
+      "--node-text":"#e7eef8",
+      "--node-sub":"#9bb0c7",
+      "--edge":"#475569",
+      "--partner":"#7c7c7c"
+    }
+  };
+}
+
+const themePresets = [
+  defaultTheme(),
+  {
+    name: "Verdant Archive",
+    values: {
+      "--bg":"#0a0f0c",
+      "--panel":"#111a14",
+      "--panel2":"#0d1511",
+      "--text":"#e6f2ea",
+      "--muted":"#9bb7a2",
+      "--accent":"#7efcc5",
+      "--danger":"#ff8aa1",
+      "--ok":"#9bffb5",
+      "--border":"#1f3527",
+      "--tree-bg":"#0d1511",
+      "--tree-glow":"rgba(126,252,197,.10)",
+      "--node-bg":"#111f17",
+      "--node-stroke":"#2b4a36",
+      "--node-highlight":"#7efcc5",
+      "--node-text":"#e6f2ea",
+      "--node-sub":"#9bb7a2",
+      "--edge":"#3a5a46",
+      "--partner":"#6fa988"
+    }
+  },
+  {
+    name: "Solar Ember",
+    values: {
+      "--bg":"#130b0b",
+      "--panel":"#1b1110",
+      "--panel2":"#150d0c",
+      "--text":"#ffe9dc",
+      "--muted":"#c8a79a",
+      "--accent":"#ffb347",
+      "--danger":"#ff7a7a",
+      "--ok":"#ffd166",
+      "--border":"#3d2420",
+      "--tree-bg":"#170f0d",
+      "--tree-glow":"rgba(255,179,71,.12)",
+      "--node-bg":"#221211",
+      "--node-stroke":"#56342b",
+      "--node-highlight":"#ffb347",
+      "--node-text":"#ffe9dc",
+      "--node-sub":"#c8a79a",
+      "--edge":"#7b4a3d",
+      "--partner":"#b77b5d"
+    }
+  },
+  {
+    name: "Arcane Frost",
+    values: {
+      "--bg":"#0a0d13",
+      "--panel":"#121823",
+      "--panel2":"#0f141f",
+      "--text":"#e9f1ff",
+      "--muted":"#a5b8d6",
+      "--accent":"#9ad0ff",
+      "--danger":"#ff8fb1",
+      "--ok":"#9af1ff",
+      "--border":"#223147",
+      "--tree-bg":"#0c111b",
+      "--tree-glow":"rgba(154,208,255,.12)",
+      "--node-bg":"#111825",
+      "--node-stroke":"#2f3f57",
+      "--node-highlight":"#9ad0ff",
+      "--node-text":"#e9f1ff",
+      "--node-sub":"#a5b8d6",
+      "--edge":"#4a5b78",
+      "--partner":"#7d90b5"
+    }
+  }
+];
+
+function loadTheme(){
+  try{
+    const raw = localStorage.getItem(THEME_KEY);
+    if(!raw) return defaultTheme();
+    const parsed = JSON.parse(raw);
+    if(!parsed || !parsed.values) return defaultTheme();
+    const base = defaultTheme();
+    return {
+      name: parsed.name || base.name,
+      values: { ...base.values, ...parsed.values }
+    };
+  }catch{
+    return defaultTheme();
+  }
+}
+
+function saveTheme(){
+  localStorage.setItem(THEME_KEY, JSON.stringify(currentTheme));
+}
+
+function applyTheme(theme){
+  const root = document.documentElement;
+  Object.entries(theme.values).forEach(([key, value]) => {
+    root.style.setProperty(key, value);
+  });
+}
 
 function normalizeTitles(s){
   return (s || "")
@@ -688,6 +880,112 @@ function resetTreeView(){
   applyTreeTransform();
 }
 
+function buildPartnerGroups(people){
+  const parent = new Map();
+  const rank = new Map();
+  const ids = people.map(p => p.id);
+  ids.forEach(id => { parent.set(id, id); rank.set(id, 0); });
+
+  const find = (id) => {
+    const root = parent.get(id);
+    if(root === id) return id;
+    const next = find(root);
+    parent.set(id, next);
+    return next;
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if(ra === rb) return;
+    const rankA = rank.get(ra) || 0;
+    const rankB = rank.get(rb) || 0;
+    if(rankA < rankB) parent.set(ra, rb);
+    else if(rankA > rankB) parent.set(rb, ra);
+    else { parent.set(rb, ra); rank.set(ra, rankA + 1); }
+  };
+
+  for(const p of people){
+    for(const partnerId of (p.partners||[])){
+      if(store.people[partnerId]) union(p.id, partnerId);
+    }
+  }
+
+  const groupMap = new Map();
+  for(const id of ids){
+    const root = find(id);
+    if(!groupMap.has(root)) groupMap.set(root, []);
+    groupMap.get(root).push(id);
+  }
+
+  const groupIdByPerson = new Map();
+  const groups = [];
+  let idx = 0;
+  for(const members of groupMap.values()){
+    const groupId = idx++;
+    groups.push({ id: groupId, members });
+    for(const member of members) groupIdByPerson.set(member, groupId);
+  }
+
+  return { groups, groupIdByPerson };
+}
+
+function computeGroupLevels(partnerGroups, people){
+  const groupCount = partnerGroups.groups.length;
+  const edges = new Map();
+  const indegree = Array(groupCount).fill(0);
+  for(let i=0;i<groupCount;i++) edges.set(i, new Set());
+
+  for(const p of people){
+    const fromGroup = partnerGroups.groupIdByPerson.get(p.id);
+    for(const childId of (p.children||[])){
+      if(!store.people[childId]) continue;
+      const toGroup = partnerGroups.groupIdByPerson.get(childId);
+      if(fromGroup === toGroup) continue;
+      if(!edges.get(fromGroup).has(toGroup)){
+        edges.get(fromGroup).add(toGroup);
+        indegree[toGroup] += 1;
+      }
+    }
+  }
+
+  const levels = Array(groupCount).fill(0);
+  const queue = [];
+  indegree.forEach((deg, idx) => { if(deg === 0) queue.push(idx); });
+  let visited = 0;
+  while(queue.length){
+    const g = queue.shift();
+    visited += 1;
+    for(const to of edges.get(g)){
+      if(levels[to] < levels[g] + 1) levels[to] = levels[g] + 1;
+      indegree[to] -= 1;
+      if(indegree[to] === 0) queue.push(to);
+    }
+  }
+
+  if(visited < groupCount){
+    let changed = true;
+    let iterations = 0;
+    while(changed && iterations < groupCount * 4){
+      changed = false;
+      iterations += 1;
+      for(const [from, targets] of edges.entries()){
+        for(const to of targets){
+          if(levels[to] < levels[from] + 1){
+            levels[to] = levels[from] + 1;
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+
+  const result = new Map();
+  partnerGroups.groups.forEach(group => {
+    result.set(group.id, levels[group.id] || 0);
+  });
+  return result;
+}
+
 function renderTree(){
   const svg = el("treeSvg");
   const viewport = el("treeViewport");
@@ -705,48 +1003,42 @@ function renderTree(){
     return;
   }
 
-  const parentsMap = new Map(people.map(p => [p.id, (p.parents||[]).filter(id => store.people[id])]));
-  const depthMemo = new Map();
-  function depth(id, seen=new Set()){
-    if(depthMemo.has(id)) return depthMemo.get(id);
-    if(seen.has(id)) return 0;
-    seen.add(id);
-    const parents = parentsMap.get(id) || [];
-    if(parents.length === 0){
-      depthMemo.set(id, 0);
-      return 0;
-    }
-    const d = Math.max(...parents.map(pid => depth(pid, new Set(seen)))) + 1;
-    depthMemo.set(id, d);
-    return d;
-  }
-
+  const partnerGroups = buildPartnerGroups(people);
+  const groupLevels = computeGroupLevels(partnerGroups, people);
   const levels = new Map();
   for(const p of people){
-    const d = depth(p.id);
+    const d = groupLevels.get(partnerGroups.groupIdByPerson.get(p.id)) || 0;
     if(!levels.has(d)) levels.set(d, []);
     levels.get(d).push(p);
   }
   for(const list of levels.values()){
-    list.sort((a,b)=> safeName(a).localeCompare(safeName(b)));
+    list.sort((a,b)=> {
+      const ga = partnerGroups.groupIdByPerson.get(a.id);
+      const gb = partnerGroups.groupIdByPerson.get(b.id);
+      if(ga !== gb) return ga - gb;
+      return safeName(a).localeCompare(safeName(b));
+    });
   }
 
   const levelKeys = Array.from(levels.keys()).sort((a,b)=>a-b);
-  const nodeSize = { w: 170, h: 64, gapX: 60, gapY: 36 };
+  const nodeSize = { w: 180, h: 68, gapX: 60, gapY: 50 };
   const positions = new Map();
-  let maxX = 0;
-  let maxY = 0;
-  for(const [idx, level] of levelKeys.entries()){
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for(const level of levelKeys){
     const peopleAt = levels.get(level);
-    const startY = 0;
-    const totalHeight = peopleAt.length * (nodeSize.h + nodeSize.gapY) - nodeSize.gapY;
-    const offsetY = startY - totalHeight / 2;
-    const x = idx * (nodeSize.w + nodeSize.gapX);
-    maxX = Math.max(maxX, x);
+    const totalWidth = peopleAt.length * (nodeSize.w + nodeSize.gapX) - nodeSize.gapX;
+    const offsetX = -totalWidth / 2;
+    const y = level * (nodeSize.h + nodeSize.gapY);
     peopleAt.forEach((p, i) => {
-      const y = offsetY + i * (nodeSize.h + nodeSize.gapY);
+      const x = offsetX + i * (nodeSize.w + nodeSize.gapX);
       positions.set(p.id, { x, y });
-      maxY = Math.max(maxY, Math.abs(y));
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x + nodeSize.w);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y + nodeSize.h);
     });
   }
 
@@ -758,12 +1050,12 @@ function renderTree(){
       const to = positions.get(childId);
       if(!to) continue;
       const line = document.createElementNS("http://www.w3.org/2000/svg","path");
-      const sx = from.x + nodeSize.w;
-      const sy = from.y + nodeSize.h / 2;
-      const tx = to.x;
-      const ty = to.y + nodeSize.h / 2;
-      const mx = (sx + tx) / 2;
-      line.setAttribute("d", `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ty}, ${tx} ${ty}`);
+      const sx = from.x + nodeSize.w / 2;
+      const sy = from.y + nodeSize.h;
+      const tx = to.x + nodeSize.w / 2;
+      const ty = to.y;
+      const my = (sy + ty) / 2;
+      line.setAttribute("d", `M ${sx} ${sy} C ${sx} ${my}, ${tx} ${my}, ${tx} ${ty}`);
       line.setAttribute("class","edgeLine");
       viewport.appendChild(line);
     }
@@ -779,9 +1071,9 @@ function renderTree(){
       if(!to) continue;
       const line = document.createElementNS("http://www.w3.org/2000/svg","line");
       line.setAttribute("x1", from.x + nodeSize.w / 2);
-      line.setAttribute("y1", from.y + nodeSize.h + 6);
+      line.setAttribute("y1", from.y + nodeSize.h / 2);
       line.setAttribute("x2", to.x + nodeSize.w / 2);
-      line.setAttribute("y2", to.y + nodeSize.h + 6);
+      line.setAttribute("y2", to.y + nodeSize.h / 2);
       line.setAttribute("class","partnerLine");
       viewport.appendChild(line);
     }
@@ -835,8 +1127,8 @@ function renderTree(){
     viewport.appendChild(g);
   }
 
-  const centeredX = -maxX / 2;
-  const centeredY = 0;
+  const centeredX = -((minX + maxX) / 2);
+  const centeredY = -((minY + maxY) / 2);
   if(treeView.x === 0 && treeView.y === 0){
     treeView.x = centeredX;
     treeView.y = centeredY;
@@ -1258,6 +1550,23 @@ el("btnReset").onclick = () => {
   saveStore();
 };
 
+el("btnApplyPreset").onclick = () => {
+  const presetIndex = Number(el("themePreset").value);
+  const preset = themePresets[presetIndex];
+  if(!preset) return;
+  currentTheme = JSON.parse(JSON.stringify(preset));
+  applyTheme(currentTheme);
+  saveTheme();
+  renderThemeControls();
+};
+
+el("btnResetTheme").onclick = () => {
+  currentTheme = defaultTheme();
+  applyTheme(currentTheme);
+  saveTheme();
+  renderThemeControls();
+};
+
 /** ===========================
  *  Tree interactions
  *  =========================== */
@@ -1305,6 +1614,85 @@ function autosave(){
 }
 setInterval(autosave, 1200);
 
+function colorToHex(value){
+  if(!value) return "#000000";
+  if(value.startsWith("#")) return value;
+  const rgba = value.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if(!rgba) return "#000000";
+  const r = Number(rgba[1]).toString(16).padStart(2, "0");
+  const g = Number(rgba[2]).toString(16).padStart(2, "0");
+  const b = Number(rgba[3]).toString(16).padStart(2, "0");
+  return `#${r}${g}${b}`;
+}
+
+function hexToRgba(hex, alpha){
+  const raw = hex.replace("#", "");
+  if(raw.length !== 6) return hex;
+  const r = parseInt(raw.slice(0,2), 16);
+  const g = parseInt(raw.slice(2,4), 16);
+  const b = parseInt(raw.slice(4,6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function renderThemeControls(){
+  const presetSelect = el("themePreset");
+  presetSelect.innerHTML = "";
+  themePresets.forEach((preset, idx) => {
+    const opt = document.createElement("option");
+    opt.value = String(idx);
+    opt.textContent = preset.name;
+    presetSelect.appendChild(opt);
+  });
+  const matchIndex = themePresets.findIndex(preset => preset.name === currentTheme.name);
+  presetSelect.value = matchIndex >= 0 ? String(matchIndex) : "0";
+
+  const themeFields = [
+    { label: "Background", key: "--bg" },
+    { label: "Panel", key: "--panel" },
+    { label: "Panel Alt", key: "--panel2" },
+    { label: "Text", key: "--text" },
+    { label: "Muted", key: "--muted" },
+    { label: "Accent", key: "--accent" },
+    { label: "Danger", key: "--danger" },
+    { label: "Success", key: "--ok" },
+    { label: "Border", key: "--border" },
+    { label: "Tree BG", key: "--tree-bg" },
+    { label: "Tree Glow", key: "--tree-glow", glow: true },
+    { label: "Node BG", key: "--node-bg" },
+    { label: "Node Stroke", key: "--node-stroke" },
+    { label: "Node Highlight", key: "--node-highlight" },
+    { label: "Node Text", key: "--node-text" },
+    { label: "Node Subtext", key: "--node-sub" },
+    { label: "Edge", key: "--edge" },
+    { label: "Partner", key: "--partner" }
+  ];
+
+  const grid = el("themeGrid");
+  grid.innerHTML = "";
+  themeFields.forEach(field => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "themeField";
+    const label = document.createElement("span");
+    label.textContent = field.label;
+    const input = document.createElement("input");
+    input.type = "color";
+    const rawValue = currentTheme.values[field.key] || "";
+    input.value = colorToHex(rawValue);
+    input.addEventListener("input", (event) => {
+      const value = event.target.value;
+      currentTheme.name = "Custom";
+      currentTheme.values[field.key] = field.glow ? hexToRgba(value, 0.12) : value;
+      applyTheme(currentTheme);
+      saveTheme();
+    });
+    wrapper.appendChild(label);
+    wrapper.appendChild(input);
+    grid.appendChild(wrapper);
+  });
+}
+
+applyTheme(currentTheme);
+renderThemeControls();
 render();
 </script>
 </body>
