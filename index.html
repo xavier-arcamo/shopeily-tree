@@ -36,8 +36,30 @@
     @media (max-width: 980px){ main{grid-template-columns: 1fr; } }
     .col{padding:14px 14px 18px; border-right:1px solid var(--border);}
     .col:last-child{border-right:none}
-    .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px; box-shadow: 0 12px 40px rgba(0,0,0,.25);}
-    .panel h2{margin:0 0 8px;font-size:13px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.12em}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:0;margin-bottom:12px; box-shadow: 0 12px 40px rgba(0,0,0,.25);}
+    .panelSummary{
+      margin:0;
+      padding:12px;
+      font-size:13px;
+      color:var(--muted);
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:.12em;
+      cursor:pointer;
+      list-style:none;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .panelSummary::-webkit-details-marker{display:none}
+    .panelSummary::after{
+      content:"▾";
+      font-size:12px;
+      color:var(--muted);
+    }
+    details:not([open]) > .panelSummary::after{content:"▸";}
+    .panelBody{padding:0 12px 12px}
+    .sectionTitle{margin:0 0 8px;font-size:13px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.12em}
     .row{display:flex;gap:10px;flex-wrap:wrap}
     .row > *{flex:1}
     label{display:block;font-size:12px;color:var(--muted);margin:8px 0 6px}
@@ -101,6 +123,9 @@
     .treeCanvas.dragging{cursor:grabbing}
     .treeControls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .treeHint{font-size:12px;color:var(--muted);margin-top:8px}
+    .treeLegend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .legendItem{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+    .legendSwatch{width:12px;height:12px;border-radius:4px;border:1px solid rgba(255,255,255,.2)}
     .nodeCard{
       fill:var(--node-bg);
       stroke:var(--node-stroke);
@@ -166,8 +191,9 @@
 <main>
   <!-- LEFT: Create/Search/List -->
   <section class="col">
-    <div class="panel">
-      <h2>Create Person</h2>
+    <details class="panel" open>
+      <summary class="panelSummary">Create Person</summary>
+      <div class="panelBody">
       <div class="row">
         <div>
           <label>Name *</label>
@@ -212,10 +238,12 @@
       <div class="hint">
         Tip: Birth/Death are freeform so you can use your own calendar (AE, regnal years, etc.).
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="panel">
-      <h2>Search & People</h2>
+    <details class="panel" open>
+      <summary class="panelSummary">Search & People</summary>
+      <div class="panelBody">
       <label>Search</label>
       <input id="q" placeholder="name, house, title…" />
       <div class="toolbar" style="margin-top:10px">
@@ -230,18 +258,22 @@
       <div class="hint">
         Click a person to edit & link relationships.
       </div>
-    </div>
+      </div>
+    </details>
   </section>
 
   <!-- RIGHT: Detail / Relationships / Export -->
   <section class="col">
-    <div class="panel" id="detailPanel">
-      <h2>Selected Person</h2>
-      <div class="small">No person selected.</div>
-    </div>
+    <details class="panel" id="detailPanel" open>
+      <summary class="panelSummary">Selected Person</summary>
+      <div class="panelBody" id="detailBody">
+        <div class="small">No person selected.</div>
+      </div>
+    </details>
 
-    <div class="panel">
-      <h2>Tree View</h2>
+    <details class="panel" open>
+      <summary class="panelSummary">Tree View</summary>
+      <div class="panelBody">
       <div class="toolbar" style="margin-bottom:8px">
         <div class="left treeControls">
           <button id="btnZoomIn">Zoom +</button>
@@ -260,10 +292,13 @@
       <div class="treeHint">
         Drag to pan. Scroll to zoom. Click a card to select.
       </div>
-    </div>
+      <div class="treeLegend" id="treeLegend"></div>
+      </div>
+    </details>
 
-    <div class="panel">
-      <h2>Theme Studio</h2>
+    <details class="panel" open>
+      <summary class="panelSummary">Theme Studio</summary>
+      <div class="panelBody">
       <div class="row">
         <div>
           <label>Preset</label>
@@ -278,10 +313,12 @@
       <div class="hint" style="margin-top:10px">
         Adjust colors to instantly re-skin the workspace and tree. Changes are saved locally.
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="panel">
-      <h2>Export / Import</h2>
+    <details class="panel" open>
+      <summary class="panelSummary">Export / Import</summary>
+      <div class="panelBody">
 
       <div class="split">
         <div>
@@ -317,7 +354,8 @@
         <span class="warn">Note:</span> GEDCOM export is “lite” (enough for many tools, but not full fidelity for fantasy calendars).
         For maximum interoperability, use JSON as your source of truth, then generate DOT/Mermaid for visuals.
       </div>
-    </div>
+      </div>
+    </details>
   </section>
 </main>
 
@@ -655,10 +693,10 @@ function renderPeopleList(){
 }
 
 function renderDetail(){
-  const panel = el("detailPanel");
+  const panel = el("detailBody");
   const p = selectedId ? personById(selectedId) : null;
   if(!p){
-    panel.innerHTML = `<h2>Selected Person</h2><div class="small">No person selected.</div>`;
+    panel.innerHTML = `<div class="small">No person selected.</div>`;
     return;
   }
 
@@ -674,8 +712,6 @@ function renderDetail(){
   const children = (p.children||[]).map(id => personById(id)).filter(Boolean);
 
   panel.innerHTML = `
-    <h2>Selected Person</h2>
-
     <div class="row">
       <div>
         <label>Name</label>
@@ -724,7 +760,7 @@ function renderDetail(){
 
     <div class="hr"></div>
 
-    <h2>Relationships</h2>
+    <div class="sectionTitle">Relationships</div>
 
     <div class="split">
       <div class="card" style="margin:0">
@@ -986,6 +1022,34 @@ function computeGroupLevels(partnerGroups, people){
   return result;
 }
 
+const housePalette = [
+  "#60a5fa",
+  "#f472b6",
+  "#34d399",
+  "#facc15",
+  "#a78bfa",
+  "#fb7185",
+  "#22d3ee",
+  "#fb923c",
+  "#4ade80",
+  "#f97316"
+];
+
+function hashString(str){
+  let hash = 0;
+  for(let i=0;i<str.length;i++){
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function colorForHouse(house){
+  const key = (house || "").trim();
+  if(!key) return null;
+  const idx = hashString(key) % housePalette.length;
+  return housePalette[idx];
+}
+
 function renderTree(){
   const svg = el("treeSvg");
   const viewport = el("treeViewport");
@@ -1055,7 +1119,7 @@ function renderTree(){
       const tx = to.x + nodeSize.w / 2;
       const ty = to.y;
       const my = (sy + ty) / 2;
-      line.setAttribute("d", `M ${sx} ${sy} C ${sx} ${my}, ${tx} ${my}, ${tx} ${ty}`);
+      line.setAttribute("d", `M ${sx} ${sy} L ${sx} ${my} L ${tx} ${my} L ${tx} ${ty}`);
       line.setAttribute("class","edgeLine");
       viewport.appendChild(line);
     }
@@ -1079,6 +1143,14 @@ function renderTree(){
     }
   }
 
+  const houseColors = new Map();
+  for(const p of people){
+    if(!p.house) continue;
+    if(!houseColors.has(p.house)){
+      houseColors.set(p.house, colorForHouse(p.house));
+    }
+  }
+
   // nodes
   for(const p of people){
     const pos = positions.get(p.id);
@@ -1093,6 +1165,18 @@ function renderTree(){
     rect.setAttribute("rx","10");
     rect.setAttribute("class", `nodeCard ${p.id === selectedId ? "nodeHighlight" : ""}`);
     g.appendChild(rect);
+
+    const houseColor = houseColors.get(p.house);
+    if(houseColor){
+      const accent = document.createElementNS("http://www.w3.org/2000/svg","rect");
+      accent.setAttribute("x","0");
+      accent.setAttribute("y","0");
+      accent.setAttribute("width", nodeSize.w);
+      accent.setAttribute("height","6");
+      accent.setAttribute("rx","10");
+      accent.setAttribute("fill", houseColor);
+      g.appendChild(accent);
+    }
 
     const name = document.createElementNS("http://www.w3.org/2000/svg","text");
     name.setAttribute("x","10");
@@ -1125,6 +1209,28 @@ function renderTree(){
     });
 
     viewport.appendChild(g);
+  }
+
+  const legend = el("treeLegend");
+  if(legend){
+    legend.innerHTML = "";
+    const entries = Array.from(houseColors.entries()).sort((a,b)=>a[0].localeCompare(b[0]));
+    if(entries.length === 0){
+      legend.innerHTML = `<div class="small">No house categories yet.</div>`;
+    }else{
+      for(const [house, color] of entries){
+        const item = document.createElement("div");
+        item.className = "legendItem";
+        const swatch = document.createElement("span");
+        swatch.className = "legendSwatch";
+        swatch.style.background = color;
+        item.appendChild(swatch);
+        const text = document.createElement("span");
+        text.textContent = house;
+        item.appendChild(text);
+        legend.appendChild(item);
+      }
+    }
   }
 
   const centeredX = -((minX + maxX) / 2);
