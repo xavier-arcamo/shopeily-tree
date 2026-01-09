@@ -150,12 +150,18 @@
     .edgeLine{
       stroke:var(--edge);
       stroke-width:1.2;
+      fill:none;
+      stroke-linejoin:miter;
+      stroke-linecap:square;
     }
     .partnerLine{
       stroke:var(--partner);
       stroke-width:1;
       stroke-dasharray:5 4;
       opacity:.7;
+      fill:none;
+      stroke-linejoin:miter;
+      stroke-linecap:square;
     }
     .nodeLabel{
       font-size:11px;
@@ -1082,6 +1088,10 @@ function clampTreeScale(next){
   return Math.min(treeView.maxScale, Math.max(treeView.minScale, next));
 }
 
+function clamp(min, max, value){
+  return Math.min(max, Math.max(min, value));
+}
+
 function resetTreeView(){
   treeView.scale = 1;
   treeView.x = 0;
@@ -1265,7 +1275,10 @@ function renderTree(){
   }
 
   const levelKeys = Array.from(levels.keys()).sort((a,b)=>a-b);
-  const nodeSize = { w: 180, h: 68, gapX: 60, gapY: 50 };
+  const maxPerLevel = Math.max(...Array.from(levels.values()).map(list => list.length), 1);
+  const dynamicGapX = clamp(40, 90, 110 - maxPerLevel * 6);
+  const dynamicGapY = clamp(40, 70, 70 - levelKeys.length * 2);
+  const nodeSize = { w: 180, h: 68, gapX: dynamicGapX, gapY: dynamicGapY };
   const positions = new Map();
   let minX = Infinity;
   let maxX = -Infinity;
@@ -1286,6 +1299,14 @@ function renderTree(){
     });
   }
 
+  const elbowPath = (start, end, mid) => {
+    return `M ${start.x} ${start.y} L ${start.x} ${mid} L ${end.x} ${mid} L ${end.x} ${end.y}`;
+  };
+
+  const elbowPathByX = (start, end, midX) => {
+    return `M ${start.x} ${start.y} L ${midX} ${start.y} L ${midX} ${end.y} L ${end.x} ${end.y}`;
+  };
+
   // edges parent -> child
   for(const p of people){
     const from = positions.get(p.id);
@@ -1299,7 +1320,7 @@ function renderTree(){
       const tx = to.x + nodeSize.w / 2;
       const ty = to.y;
       const my = (sy + ty) / 2;
-      line.setAttribute("d", `M ${sx} ${sy} L ${sx} ${my} L ${tx} ${my} L ${tx} ${ty}`);
+      line.setAttribute("d", elbowPath({ x: sx, y: sy }, { x: tx, y: ty }, my));
       line.setAttribute("class","edgeLine");
       viewport.appendChild(line);
     }
@@ -1313,11 +1334,17 @@ function renderTree(){
       if(partnerId <= p.id) continue;
       const to = positions.get(partnerId);
       if(!to) continue;
-      const line = document.createElementNS("http://www.w3.org/2000/svg","line");
-      line.setAttribute("x1", from.x + nodeSize.w / 2);
-      line.setAttribute("y1", from.y + nodeSize.h / 2);
-      line.setAttribute("x2", to.x + nodeSize.w / 2);
-      line.setAttribute("y2", to.y + nodeSize.h / 2);
+      const line = document.createElementNS("http://www.w3.org/2000/svg","path");
+      const sx = from.x + nodeSize.w / 2;
+      const sy = from.y + nodeSize.h / 2;
+      const tx = to.x + nodeSize.w / 2;
+      const ty = to.y + nodeSize.h / 2;
+      if(Math.abs(ty - sy) < 1){
+        line.setAttribute("d", `M ${sx} ${sy} L ${tx} ${ty}`);
+      }else{
+        const mx = (sx + tx) / 2;
+        line.setAttribute("d", elbowPathByX({ x: sx, y: sy }, { x: tx, y: ty }, mx));
+      }
       line.setAttribute("class","partnerLine");
       viewport.appendChild(line);
     }
