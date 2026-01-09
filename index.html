@@ -119,12 +119,24 @@
       width:100%;
       height:100%;
       cursor:grab;
+      touch-action:none;
     }
     .treeCanvas.dragging{cursor:grabbing}
     .treeControls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .treeHint{font-size:12px;color:var(--muted);margin-top:8px}
     .treeLegend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
     .legendItem{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+    .legendButton{
+      background:none;
+      border:1px solid transparent;
+      padding:4px 6px;
+      border-radius:8px;
+      cursor:pointer;
+    }
+    .legendButton:hover{
+      border-color:var(--border);
+      color:var(--text);
+    }
     .legendSwatch{width:12px;height:12px;border-radius:4px;border:1px solid rgba(255,255,255,.2)}
     .nodeCard{
       fill:var(--node-bg);
@@ -175,6 +187,61 @@
       font-size:12px;
       color:var(--muted);
       min-width:92px;
+    }
+    .modal{
+      position:fixed;
+      inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:40;
+    }
+    .modal.is-open{display:flex}
+    .modalBackdrop{
+      position:absolute;
+      inset:0;
+      background:rgba(0,0,0,.5);
+    }
+    .modalPanel{
+      position:relative;
+      z-index:1;
+      width:min(420px, 92vw);
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:16px;
+      box-shadow:0 20px 50px rgba(0,0,0,.35);
+    }
+    .modalHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      margin-bottom:12px;
+    }
+    .modalTitle{
+      font-size:14px;
+      font-weight:700;
+      margin:0;
+    }
+    .colorPreview{
+      width:100%;
+      height:36px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      margin-bottom:12px;
+    }
+    .sliderRow{
+      display:grid;
+      grid-template-columns: 60px 1fr 60px;
+      gap:8px;
+      align-items:center;
+      margin-bottom:8px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .sliderRow input[type="range"]{
+      width:100%;
     }
   </style>
 </head>
@@ -290,7 +357,7 @@
         </svg>
       </div>
       <div class="treeHint">
-        Drag to pan. Scroll to zoom. Click a card to select.
+        Drag to pan. Scroll or pinch to zoom. Click a card to select.
       </div>
       <div class="treeLegend" id="treeLegend"></div>
       </div>
@@ -359,6 +426,48 @@
   </section>
 </main>
 
+<div class="modal" id="houseColorModal" aria-hidden="true">
+  <div class="modalBackdrop" data-action="close-house-color"></div>
+  <div class="modalPanel" role="dialog" aria-modal="true" aria-labelledby="houseColorTitle">
+    <div class="modalHeader">
+      <h2 class="modalTitle" id="houseColorTitle">Edit House Color</h2>
+      <button id="houseColorClose">Close</button>
+    </div>
+    <div class="colorPreview" id="houseColorPreview"></div>
+    <label>Hex</label>
+    <input id="houseColorHex" placeholder="#AABBCC" class="mono" />
+    <div class="row" style="margin-top:10px">
+      <div>
+        <label>Picker</label>
+        <input type="color" id="houseColorPicker" />
+      </div>
+      <div>
+        <label>Reset</label>
+        <button id="houseColorReset">Default Palette</button>
+      </div>
+    </div>
+    <div class="sectionTitle" style="margin-top:12px">RGB Sliders</div>
+    <div class="sliderRow">
+      <span>R</span>
+      <input type="range" min="0" max="255" id="houseColorR" />
+      <span id="houseColorRValue">0</span>
+    </div>
+    <div class="sliderRow">
+      <span>G</span>
+      <input type="range" min="0" max="255" id="houseColorG" />
+      <span id="houseColorGValue">0</span>
+    </div>
+    <div class="sliderRow">
+      <span>B</span>
+      <input type="range" min="0" max="255" id="houseColorB" />
+      <span id="houseColorBValue">0</span>
+    </div>
+    <div class="hint" style="margin-top:10px">
+      Tip: Changes apply instantly to the tree and legend.
+    </div>
+  </div>
+</div>
+
 <script>
 /** ===========================
  *  Data model
@@ -379,10 +488,12 @@
  */
 const STORAGE_KEY = "wb_family_tree_v1";
 const THEME_KEY = "wb_family_tree_theme_v1";
+const HOUSE_COLOR_KEY = "wb_family_tree_house_colors_v1";
 let store = loadStore() ?? freshStore();
 let selectedId = null;
 let sortMode = "name";
 let currentTheme = loadTheme();
+let houseColorOverrides = loadHouseColorOverrides();
 
 function freshStore(){
   return { people: {}, meta: { version: 1, updatedAt: new Date().toISOString() } };
@@ -437,6 +548,52 @@ function defaultTheme(){
 
 const themePresets = [
   defaultTheme(),
+  {
+    name: "Sunlit Canvas",
+    values: {
+      "--bg":"#f5f7fb",
+      "--panel":"#ffffff",
+      "--panel2":"#f0f3f8",
+      "--text":"#1f2937",
+      "--muted":"#5b6b7f",
+      "--accent":"#2563eb",
+      "--danger":"#dc2626",
+      "--ok":"#16a34a",
+      "--border":"#d6dde8",
+      "--tree-bg":"#f1f5f9",
+      "--tree-glow":"rgba(37,99,235,.12)",
+      "--node-bg":"#ffffff",
+      "--node-stroke":"#cbd5e1",
+      "--node-highlight":"#2563eb",
+      "--node-text":"#1f2937",
+      "--node-sub":"#5b6b7f",
+      "--edge":"#94a3b8",
+      "--partner":"#94a3b8"
+    }
+  },
+  {
+    name: "Mist & Ink",
+    values: {
+      "--bg":"#eef1f6",
+      "--panel":"#f9fafb",
+      "--panel2":"#e5e9f1",
+      "--text":"#1f2933",
+      "--muted":"#526070",
+      "--accent":"#0f766e",
+      "--danger":"#b91c1c",
+      "--ok":"#15803d",
+      "--border":"#cbd4e1",
+      "--tree-bg":"#e8edf4",
+      "--tree-glow":"rgba(15,118,110,.14)",
+      "--node-bg":"#ffffff",
+      "--node-stroke":"#bcc7d6",
+      "--node-highlight":"#0f766e",
+      "--node-text":"#1f2933",
+      "--node-sub":"#526070",
+      "--edge":"#8b98aa",
+      "--partner":"#8b98aa"
+    }
+  },
   {
     name: "Verdant Archive",
     values: {
@@ -533,6 +690,22 @@ function applyTheme(theme){
   Object.entries(theme.values).forEach(([key, value]) => {
     root.style.setProperty(key, value);
   });
+}
+
+function loadHouseColorOverrides(){
+  try{
+    const raw = localStorage.getItem(HOUSE_COLOR_KEY);
+    if(!raw) return {};
+    const parsed = JSON.parse(raw);
+    if(!parsed || typeof parsed !== "object") return {};
+    return parsed;
+  }catch{
+    return {};
+  }
+}
+
+function saveHouseColorOverrides(){
+  localStorage.setItem(HOUSE_COLOR_KEY, JSON.stringify(houseColorOverrides));
 }
 
 function normalizeTitles(s){
@@ -1050,6 +1223,13 @@ function colorForHouse(house){
   return housePalette[idx];
 }
 
+function resolveHouseColor(house){
+  const key = (house || "").trim();
+  if(!key) return null;
+  if(houseColorOverrides[key]) return houseColorOverrides[key];
+  return colorForHouse(key);
+}
+
 function renderTree(){
   const svg = el("treeSvg");
   const viewport = el("treeViewport");
@@ -1147,7 +1327,7 @@ function renderTree(){
   for(const p of people){
     if(!p.house) continue;
     if(!houseColors.has(p.house)){
-      houseColors.set(p.house, colorForHouse(p.house));
+      houseColors.set(p.house, resolveHouseColor(p.house));
     }
   }
 
@@ -1219,8 +1399,11 @@ function renderTree(){
       legend.innerHTML = `<div class="small">No house categories yet.</div>`;
     }else{
       for(const [house, color] of entries){
-        const item = document.createElement("div");
-        item.className = "legendItem";
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "legendItem legendButton";
+        item.setAttribute("data-house", house);
+        item.setAttribute("title", `Edit ${house} color`);
         const swatch = document.createElement("span");
         swatch.className = "legendSwatch";
         swatch.style.background = color;
@@ -1679,14 +1862,16 @@ el("btnResetTheme").onclick = () => {
 const treeSvg = el("treeSvg");
 let isDragging = false;
 let dragStart = { x: 0, y: 0 };
+let pinchStartDistance = null;
+let pinchStartScale = 1;
 
 el("btnZoomIn").onclick = () => {
-  treeView.scale = clampTreeScale(treeView.scale + 0.15);
-  applyTreeTransform();
+  const rect = treeSvg.getBoundingClientRect();
+  zoomTreeAt(getSvgPoint(rect.left + rect.width / 2, rect.top + rect.height / 2), treeView.scale + 0.15);
 };
 el("btnZoomOut").onclick = () => {
-  treeView.scale = clampTreeScale(treeView.scale - 0.15);
-  applyTreeTransform();
+  const rect = treeSvg.getBoundingClientRect();
+  zoomTreeAt(getSvgPoint(rect.left + rect.width / 2, rect.top + rect.height / 2), treeView.scale - 0.15);
 };
 el("btnZoomReset").onclick = () => resetTreeView();
 
@@ -1694,8 +1879,8 @@ treeSvg.addEventListener("wheel", (event) => {
   event.preventDefault();
   const direction = Math.sign(event.deltaY);
   const next = treeView.scale + (direction > 0 ? -0.1 : 0.1);
-  treeView.scale = clampTreeScale(next);
-  applyTreeTransform();
+  const point = getSvgPoint(event.clientX, event.clientY);
+  zoomTreeAt(point, next);
 }, { passive: false });
 
 treeSvg.addEventListener("mousedown", (event) => {
@@ -1712,6 +1897,61 @@ window.addEventListener("mousemove", (event) => {
 window.addEventListener("mouseup", () => {
   isDragging = false;
   treeSvg.classList.remove("dragging");
+});
+
+treeSvg.addEventListener("touchstart", (event) => {
+  if(event.touches.length === 1){
+    const touch = event.touches[0];
+    isDragging = true;
+    dragStart = { x: touch.clientX - treeView.x, y: touch.clientY - treeView.y };
+    treeSvg.classList.add("dragging");
+  }else if(event.touches.length === 2){
+    isDragging = false;
+    treeSvg.classList.remove("dragging");
+    pinchStartDistance = getTouchDistance(event.touches[0], event.touches[1]);
+    pinchStartScale = treeView.scale;
+  }
+}, { passive: false });
+
+treeSvg.addEventListener("touchmove", (event) => {
+  if(event.touches.length === 1 && isDragging){
+    const touch = event.touches[0];
+    treeView.x = touch.clientX - dragStart.x;
+    treeView.y = touch.clientY - dragStart.y;
+    applyTreeTransform();
+    event.preventDefault();
+  }else if(event.touches.length === 2){
+    const t1 = event.touches[0];
+    const t2 = event.touches[1];
+    const nextDistance = getTouchDistance(t1, t2);
+    if(pinchStartDistance){
+      const nextScale = pinchStartScale * (nextDistance / pinchStartDistance);
+      const midpoint = {
+        x: (t1.clientX + t2.clientX) / 2,
+        y: (t1.clientY + t2.clientY) / 2
+      };
+      zoomTreeAt(getSvgPoint(midpoint.x, midpoint.y), nextScale);
+    }
+    event.preventDefault();
+  }
+}, { passive: false });
+
+treeSvg.addEventListener("touchend", (event) => {
+  if(event.touches.length === 0){
+    isDragging = false;
+    treeSvg.classList.remove("dragging");
+    pinchStartDistance = null;
+  }else if(event.touches.length === 1){
+    const touch = event.touches[0];
+    isDragging = true;
+    dragStart = { x: touch.clientX - treeView.x, y: touch.clientY - treeView.y };
+  }
+});
+
+treeSvg.addEventListener("touchcancel", () => {
+  isDragging = false;
+  treeSvg.classList.remove("dragging");
+  pinchStartDistance = null;
 });
 
 function autosave(){
@@ -1738,6 +1978,57 @@ function hexToRgba(hex, alpha){
   const g = parseInt(raw.slice(2,4), 16);
   const b = parseInt(raw.slice(4,6), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function normalizeHex(value){
+  if(!value) return null;
+  const trimmed = value.trim();
+  const hex = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+  if(!/^#([0-9a-f]{6})$/i.test(hex)) return null;
+  return hex.toUpperCase();
+}
+
+function hexToRgb(hex){
+  const raw = hex.replace("#", "");
+  return {
+    r: parseInt(raw.slice(0,2), 16),
+    g: parseInt(raw.slice(2,4), 16),
+    b: parseInt(raw.slice(4,6), 16)
+  };
+}
+
+function rgbToHex({ r, g, b }){
+  const toHex = (val) => Math.max(0, Math.min(255, val)).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+}
+
+function getSvgPoint(clientX, clientY){
+  const pt = treeSvg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  const matrix = treeSvg.getScreenCTM();
+  if(!matrix) return { x: clientX, y: clientY };
+  const result = pt.matrixTransform(matrix.inverse());
+  return { x: result.x, y: result.y };
+}
+
+function zoomTreeAt(point, nextScale){
+  const clamped = clampTreeScale(nextScale);
+  const prevScale = treeView.scale;
+  const prevX = treeView.x;
+  const prevY = treeView.y;
+  const screenX = point.x * prevScale + prevX;
+  const screenY = point.y * prevScale + prevY;
+  treeView.scale = clamped;
+  treeView.x = screenX - point.x * clamped;
+  treeView.y = screenY - point.y * clamped;
+  applyTreeTransform();
+}
+
+function getTouchDistance(t1, t2){
+  const dx = t1.clientX - t2.clientX;
+  const dy = t1.clientY - t2.clientY;
+  return Math.hypot(dx, dy);
 }
 
 function renderThemeControls(){
@@ -1800,6 +2091,110 @@ function renderThemeControls(){
 applyTheme(currentTheme);
 renderThemeControls();
 render();
+
+const houseColorModal = el("houseColorModal");
+const houseColorTitle = el("houseColorTitle");
+const houseColorPreview = el("houseColorPreview");
+const houseColorHex = el("houseColorHex");
+const houseColorPicker = el("houseColorPicker");
+const houseColorR = el("houseColorR");
+const houseColorG = el("houseColorG");
+const houseColorB = el("houseColorB");
+const houseColorRValue = el("houseColorRValue");
+const houseColorGValue = el("houseColorGValue");
+const houseColorBValue = el("houseColorBValue");
+const houseColorClose = el("houseColorClose");
+const houseColorReset = el("houseColorReset");
+let activeHouse = null;
+let updatingHouseControls = false;
+
+function openHouseColorModal(house){
+  activeHouse = house;
+  houseColorTitle.textContent = `Edit ${house} color`;
+  const base = resolveHouseColor(house) || "#FFFFFF";
+  updateHouseControls(base);
+  houseColorModal.classList.add("is-open");
+  houseColorModal.setAttribute("aria-hidden", "false");
+}
+
+function closeHouseColorModal(){
+  activeHouse = null;
+  houseColorModal.classList.remove("is-open");
+  houseColorModal.setAttribute("aria-hidden", "true");
+}
+
+function updateHouseControls(color){
+  const hex = normalizeHex(color) || "#FFFFFF";
+  const rgb = hexToRgb(hex);
+  updatingHouseControls = true;
+  houseColorPreview.style.background = hex;
+  houseColorHex.value = hex;
+  houseColorPicker.value = hex;
+  houseColorR.value = String(rgb.r);
+  houseColorG.value = String(rgb.g);
+  houseColorB.value = String(rgb.b);
+  houseColorRValue.textContent = String(rgb.r);
+  houseColorGValue.textContent = String(rgb.g);
+  houseColorBValue.textContent = String(rgb.b);
+  updatingHouseControls = false;
+}
+
+function applyHouseColor(hex){
+  if(!activeHouse) return;
+  const normalized = normalizeHex(hex);
+  if(!normalized) return;
+  houseColorOverrides[activeHouse] = normalized;
+  saveHouseColorOverrides();
+  updateHouseControls(normalized);
+  renderTree();
+}
+
+function resetHouseColor(){
+  if(!activeHouse) return;
+  delete houseColorOverrides[activeHouse];
+  saveHouseColorOverrides();
+  const fallback = resolveHouseColor(activeHouse) || "#FFFFFF";
+  updateHouseControls(fallback);
+  renderTree();
+}
+
+houseColorHex.addEventListener("input", (event) => {
+  if(updatingHouseControls) return;
+  const normalized = normalizeHex(event.target.value);
+  if(!normalized) return;
+  applyHouseColor(normalized);
+});
+
+houseColorPicker.addEventListener("input", (event) => {
+  if(updatingHouseControls) return;
+  applyHouseColor(event.target.value);
+});
+
+[houseColorR, houseColorG, houseColorB].forEach(input => {
+  input.addEventListener("input", () => {
+    if(updatingHouseControls) return;
+    const rgb = {
+      r: Number(houseColorR.value),
+      g: Number(houseColorG.value),
+      b: Number(houseColorB.value)
+    };
+    const hex = rgbToHex(rgb);
+    applyHouseColor(hex);
+  });
+});
+
+houseColorClose.onclick = () => closeHouseColorModal();
+houseColorReset.onclick = () => resetHouseColor();
+houseColorModal.addEventListener("click", (event) => {
+  if(event.target.matches('[data-action="close-house-color"]')) closeHouseColorModal();
+});
+
+document.addEventListener("click", (event) => {
+  const target = event.target.closest(".legendButton");
+  if(!target) return;
+  const house = target.getAttribute("data-house");
+  if(house) openHouseColorModal(house);
+});
 </script>
 </body>
 </html>
