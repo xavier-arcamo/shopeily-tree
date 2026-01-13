@@ -115,6 +115,10 @@
       border:1px solid var(--border);
       overflow:hidden;
     }
+    .treeWrap.expanded{
+      height:70vh;
+      min-height:520px;
+    }
     .treeCanvas{
       width:100%;
       height:100%;
@@ -138,6 +142,47 @@
       color:var(--text);
     }
     .legendSwatch{width:12px;height:12px;border-radius:4px;border:1px solid rgba(255,255,255,.2)}
+    .legendStack{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      margin-top:8px;
+    }
+    .tokenRow{
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      margin-top:6px;
+    }
+    .token{
+      width:18px;
+      height:18px;
+      border-radius:6px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.03);
+      cursor:pointer;
+    }
+    .token.active{
+      background:var(--accent);
+      border-color:rgba(110,231,255,.5);
+      box-shadow:0 0 6px rgba(110,231,255,.45);
+    }
+    .tokenMeta{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+      font-size:12px;
+      color:var(--muted);
+      margin-top:6px;
+    }
+    .inlineToggle{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-size:12px;
+      color:var(--muted);
+    }
     .nodeCard{
       fill:var(--node-bg);
       stroke:var(--node-stroke);
@@ -333,6 +378,32 @@
       </div>
       </div>
     </details>
+
+    <details class="panel" open>
+      <summary class="panelSummary">Bloodlines</summary>
+      <div class="panelBody">
+      <div class="row">
+        <div>
+          <label>Name *</label>
+          <input id="bloodlineName" placeholder="e.g., Drake" />
+        </div>
+        <div>
+          <label>Token Slots</label>
+          <input id="bloodlineSlots" type="number" min="1" max="50" placeholder="12" />
+        </div>
+      </div>
+      <label>Short Description</label>
+      <input id="bloodlineDesc" placeholder="e.g., Ancient draconic lineage" />
+      <label>Notes</label>
+      <textarea id="bloodlineNotes" placeholder="Lore notes, source, quirks…"></textarea>
+      <div class="row">
+        <button class="primary" id="btnBloodlineSave">Add Bloodline</button>
+        <button id="btnBloodlineReset">Clear</button>
+      </div>
+      <div class="hr"></div>
+      <div class="list" id="bloodlineList"></div>
+      </div>
+    </details>
   </section>
 
   <!-- RIGHT: Detail / Relationships / Export -->
@@ -353,9 +424,15 @@
           <button id="btnZoomOut">Zoom −</button>
           <button id="btnZoomReset">Reset View</button>
         </div>
-        <div class="status" id="treeStatus">Zoom 100%</div>
+        <div class="row" style="gap:12px;align-items:center">
+          <label class="inlineToggle">
+            <input type="checkbox" id="expandedToggle" />
+            Expanded View
+          </label>
+          <div class="status" id="treeStatus">Zoom 100%</div>
+        </div>
       </div>
-      <div class="treeWrap">
+      <div class="treeWrap" id="treeWrap">
         <svg id="treeSvg" class="treeCanvas" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid meet">
           <g id="treeViewport">
             <rect x="-6000" y="-6000" width="12000" height="12000" fill="transparent"></rect>
@@ -365,7 +442,10 @@
       <div class="treeHint">
         Drag to pan. Scroll or pinch to zoom. Click a card to select.
       </div>
+      <div class="sectionTitle" style="margin-top:12px">Houses</div>
       <div class="treeLegend" id="treeLegend"></div>
+      <div class="sectionTitle" style="margin-top:12px">Bloodlines</div>
+      <div class="treeLegend legendStack" id="bloodlineLegend"></div>
       </div>
     </details>
 
@@ -486,15 +566,18 @@
  *        notes: string,
  *        parents: string[],   // up to 2 typically, but we don't enforce
  *        partners: string[],  // spouses/partners
- *        children: string[]   // derived or manual; we keep it explicit for performance on large trees
+ *        children: string[],  // derived or manual; we keep it explicit for performance on large trees
+ *        bloodlines: { [name]: number[] },
+ *        bloodlinesAuto: boolean
  *      }
  *    },
- *    meta: { version, updatedAt }
+ *    meta: { version, updatedAt, bloodlines, bloodlineSlots, bloodlineSettings }
  *  }
  */
 const STORAGE_KEY = "wb_family_tree_v1";
 const THEME_KEY = "wb_family_tree_theme_v1";
 const HOUSE_COLOR_KEY = "wb_family_tree_house_colors_v1";
+const EXPANDED_VIEW_KEY = "wb_family_tree_expanded_view_v1";
 const BLOODLINE_DEFAULT_SLOTS = {
   Drake: 12,
   Moon: 12
@@ -506,11 +589,25 @@ const BLOODLINE_DEFAULT_SETTINGS = {
   enableLatent: false,
   totalStrengthCap: null
 };
+const BLOODLINE_DEFAULT_DEFINITIONS = {
+  Drake: {
+    name: "Drake",
+    description: "Ancient draconic ancestry.",
+    notes: ""
+  },
+  Moon: {
+    name: "Moon",
+    description: "Lunar-touched lineage.",
+    notes: ""
+  }
+};
 let store = normalizeStore(loadStore() ?? freshStore());
 let selectedId = null;
 let sortMode = "name";
 let currentTheme = loadTheme();
 let houseColorOverrides = loadHouseColorOverrides();
+let expandedView = loadExpandedView();
+let editingBloodline = null;
 
 function freshStore(){
   return {
@@ -549,15 +646,37 @@ function normalizeStore(candidate){
 function withDefaultBloodlineMeta(meta){
   const next = { ...meta };
   next.version = next.version || 2;
-  next.bloodlineSlots = {
+  next.bloodlines = normalizeBloodlineDefinitions(next.bloodlines);
+  const slotSource = next.bloodlineSlots || {};
+  const mergedSlots = {
     ...BLOODLINE_DEFAULT_SLOTS,
-    ...(next.bloodlineSlots || {})
+    ...slotSource
   };
+  Object.keys(next.bloodlines).forEach((name) => {
+    if(!mergedSlots[name]) mergedSlots[name] = 12;
+  });
+  next.bloodlineSlots = mergedSlots;
   next.bloodlineSettings = {
     ...BLOODLINE_DEFAULT_SETTINGS,
     ...(next.bloodlineSettings || {})
   };
   return next;
+}
+
+function normalizeBloodlineDefinitions(definitions){
+  const base = { ...BLOODLINE_DEFAULT_DEFINITIONS };
+  if(!definitions || typeof definitions !== "object") return base;
+  const result = { ...base };
+  Object.entries(definitions).forEach(([key, value]) => {
+    if(!key) return;
+    const safe = value && typeof value === "object" ? value : {};
+    result[key] = {
+      name: safe.name || key,
+      description: safe.description || "",
+      notes: safe.notes || ""
+    };
+  });
+  return result;
 }
 
 function personById(id){ return store.people[id] || null; }
@@ -568,6 +687,51 @@ function getBloodlineSlots(){
 
 function getBloodlineSettings(){
   return store?.meta?.bloodlineSettings || { ...BLOODLINE_DEFAULT_SETTINGS };
+}
+
+function getBloodlineDefinitions(){
+  return store?.meta?.bloodlines || normalizeBloodlineDefinitions(null);
+}
+
+function updateBloodlineSlots(name, slots){
+  const count = Math.max(1, Number(slots) || 0);
+  store.meta.bloodlineSlots[name] = count;
+  Object.values(store.people).forEach(person => {
+    if(person.bloodlines && person.bloodlines[name]){
+      person.bloodlines[name] = normalizeTokens(person.bloodlines[name], count);
+    }
+  });
+}
+
+function renameBloodline(oldName, nextName){
+  if(oldName === nextName) return;
+  const defs = store.meta.bloodlines;
+  defs[nextName] = {
+    name: nextName,
+    description: defs[oldName]?.description || "",
+    notes: defs[oldName]?.notes || ""
+  };
+  delete defs[oldName];
+  if(store.meta.bloodlineSlots[oldName]){
+    store.meta.bloodlineSlots[nextName] = store.meta.bloodlineSlots[oldName];
+    delete store.meta.bloodlineSlots[oldName];
+  }
+  Object.values(store.people).forEach(person => {
+    if(person.bloodlines && person.bloodlines[oldName]){
+      person.bloodlines[nextName] = person.bloodlines[oldName];
+      delete person.bloodlines[oldName];
+    }
+  });
+}
+
+function deleteBloodline(name){
+  delete store.meta.bloodlines[name];
+  delete store.meta.bloodlineSlots[name];
+  Object.values(store.people).forEach(person => {
+    if(person.bloodlines){
+      delete person.bloodlines[name];
+    }
+  });
 }
 
 function defaultTheme(){
@@ -733,6 +897,18 @@ function loadTheme(){
 
 function saveTheme(){
   localStorage.setItem(THEME_KEY, JSON.stringify(currentTheme));
+}
+
+function loadExpandedView(){
+  try{
+    return localStorage.getItem(EXPANDED_VIEW_KEY) === "true";
+  }catch{
+    return false;
+  }
+}
+
+function saveExpandedView(){
+  localStorage.setItem(EXPANDED_VIEW_KEY, expandedView ? "true" : "false");
 }
 
 function applyTheme(theme){
@@ -988,8 +1164,15 @@ function render(){
   // list
   renderPeopleList();
 
+  // bloodlines
+  renderBloodlineList();
+  renderBloodlineLegend();
+
   // detail
   renderDetail();
+
+  // expanded view
+  applyExpandedView();
 
   // tree
   renderTree();
@@ -1051,6 +1234,137 @@ function renderPeopleList(){
   if(arr.length === 0){
     list.innerHTML = `<div class="small">No results.</div>`;
   }
+}
+
+function renderBloodlineList(){
+  const list = el("bloodlineList");
+  if(!list) return;
+  list.innerHTML = "";
+  const defs = getBloodlineDefinitions();
+  const slots = getBloodlineSlots();
+  const names = Object.keys(defs).sort((a,b)=>a.localeCompare(b));
+  if(names.length === 0){
+    list.innerHTML = `<div class="small">No bloodlines yet.</div>`;
+    return;
+  }
+  for(const name of names){
+    const def = defs[name];
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="cardTop">
+        <div>
+          <div class="name">${escapeHtml(def.name || name)}</div>
+          <div class="small">${escapeHtml(def.description || "")}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button data-edit-bloodline="${escapeAttr(name)}">Edit</button>
+          <button class="danger" data-delete-bloodline="${escapeAttr(name)}">Delete</button>
+        </div>
+      </div>
+      <div class="kvs">
+        <div class="kvk">Slots</div>
+        <div class="kvv">${Number(slots[name] || 0)}</div>
+        <div class="kvk">Notes</div>
+        <div class="kvv">${escapeHtml(def.notes || "") || "—"}</div>
+      </div>
+    `;
+    list.appendChild(card);
+  }
+
+  list.querySelectorAll("[data-edit-bloodline]").forEach(btn => {
+    btn.onclick = () => {
+      const name = btn.getAttribute("data-edit-bloodline");
+      const def = defs[name];
+      if(!def) return;
+      editingBloodline = name;
+      el("bloodlineName").value = def.name || name;
+      el("bloodlineDesc").value = def.description || "";
+      el("bloodlineNotes").value = def.notes || "";
+      el("bloodlineSlots").value = String(slots[name] || 12);
+      el("btnBloodlineSave").textContent = "Update Bloodline";
+    };
+  });
+  list.querySelectorAll("[data-delete-bloodline]").forEach(btn => {
+    btn.onclick = () => {
+      const name = btn.getAttribute("data-delete-bloodline");
+      if(!name) return;
+      if(!confirm(`Delete bloodline "${name}"? This removes it from all people.`)) return;
+      deleteBloodline(name);
+      if(editingBloodline === name) resetBloodlineForm();
+      saveStore();
+    };
+  });
+}
+
+function renderBloodlineLegend(){
+  const legend = el("bloodlineLegend");
+  if(!legend) return;
+  const defs = getBloodlineDefinitions();
+  const slots = getBloodlineSlots();
+  const names = Object.keys(defs).sort((a,b)=>a.localeCompare(b));
+  legend.innerHTML = "";
+  if(names.length === 0){
+    legend.innerHTML = `<div class="small">No bloodlines yet.</div>`;
+    return;
+  }
+  for(const name of names){
+    const def = defs[name];
+    const item = document.createElement("div");
+    item.className = "legendItem";
+    item.innerHTML = `
+      <span>${escapeHtml(def.name || name)}</span>
+      <span class="tag">${Number(slots[name] || 0)} slots</span>
+      <span class="small">${escapeHtml(def.description || "")}</span>
+    `;
+    legend.appendChild(item);
+  }
+}
+
+function renderPersonBloodlines(person){
+  const defs = getBloodlineDefinitions();
+  const slots = getBloodlineSlots();
+  const names = Object.keys(defs).sort((a,b)=>a.localeCompare(b));
+  if(names.length === 0){
+    return `<div class="small">No bloodlines defined yet.</div>`;
+  }
+  return names.map((name) => {
+    const def = defs[name];
+    const slotCount = Number(slots[name] || 0);
+    const tokens = normalizeTokens(person.bloodlines?.[name], slotCount || 0);
+    const activeCount = tokens.reduce((sum, val) => sum + (val ? 1 : 0), 0);
+    const strength = slotCount ? Math.round((activeCount / slotCount) * 100) : 0;
+    const tokenButtons = tokens.map((val, idx) => `
+      <button
+        type="button"
+        class="token ${val ? "active" : ""}"
+        data-bloodline-token="true"
+        data-bloodline="${escapeAttr(name)}"
+        data-token-index="${idx}"
+        aria-pressed="${val ? "true" : "false"}"
+        title="Toggle token ${idx + 1}"
+      ></button>
+    `).join("");
+    return `
+      <div class="card" style="margin-top:10px">
+        <div class="cardTop">
+          <div>
+            <div class="name">${escapeHtml(def.name || name)}</div>
+            <div class="small">${escapeHtml(def.description || "")}</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button data-clear-bloodline="${escapeAttr(name)}">Clear</button>
+          </div>
+        </div>
+        <div class="tokenMeta">
+          <span>${activeCount} / ${slotCount} tokens</span>
+          <span>${strength}% strength</span>
+        </div>
+        <div class="tokenRow">${tokenButtons || `<span class="small">No slots configured.</span>`}</div>
+        ${def.notes ? `<div class="small" style="margin-top:8px">${escapeHtml(def.notes)}</div>` : ""}
+      </div>
+    `;
+  }).join("");
 }
 
 function renderDetail(){
@@ -1118,6 +1432,11 @@ function renderDetail(){
       <button class="ok" id="btnUpdate">Update</button>
       <button class="danger" id="btnDelete">Delete Person</button>
     </div>
+
+    <div class="hr"></div>
+
+    <div class="sectionTitle">Bloodlines</div>
+    ${renderPersonBloodlines(p)}
 
     <div class="hr"></div>
 
@@ -1233,6 +1552,31 @@ function renderDetail(){
   panel.querySelectorAll("[data-unlink-partner]").forEach(btn => {
     btn.onclick = () => { unlinkPartners(p.id, btn.getAttribute("data-unlink-partner")); saveStore(); };
   });
+
+  panel.querySelectorAll("[data-bloodline-token]").forEach(btn => {
+    btn.onclick = () => {
+      const name = btn.getAttribute("data-bloodline");
+      const idx = Number(btn.getAttribute("data-token-index"));
+      const slotCount = getBloodlineSlots()[name] || 0;
+      if(!name || !Number.isFinite(idx) || slotCount <= 0) return;
+      const tokens = normalizeTokens(p.bloodlines?.[name], slotCount);
+      tokens[idx] = tokens[idx] ? 0 : 1;
+      if(!p.bloodlines) p.bloodlines = {};
+      p.bloodlines[name] = tokens;
+      p.bloodlinesAuto = false;
+      saveStore();
+    };
+  });
+
+  panel.querySelectorAll("[data-clear-bloodline]").forEach(btn => {
+    btn.onclick = () => {
+      const name = btn.getAttribute("data-clear-bloodline");
+      if(!name) return;
+      if(p.bloodlines) delete p.bloodlines[name];
+      p.bloodlinesAuto = false;
+      saveStore();
+    };
+  });
 }
 
 function escapeHtml(s){
@@ -1255,6 +1599,13 @@ const treeView = {
   minScale: 0.4,
   maxScale: 2.4
 };
+const treeWrap = el("treeWrap");
+const expandedToggle = el("expandedToggle");
+
+function applyExpandedView(){
+  if(treeWrap) treeWrap.classList.toggle("expanded", expandedView);
+  if(expandedToggle) expandedToggle.checked = expandedView;
+}
 
 function updateTreeStatus(){
   el("treeStatus").textContent = `Zoom ${Math.round(treeView.scale * 100)}%`;
@@ -1990,6 +2341,33 @@ el("btnAddAndSelect").onclick = () => {
   saveStore();
 };
 
+el("btnBloodlineSave").onclick = () => {
+  const name = el("bloodlineName").value.trim();
+  if(!name) return alert("Bloodline name is required.");
+  const description = el("bloodlineDesc").value.trim();
+  const notes = el("bloodlineNotes").value.trim();
+  const slotsInput = Number(el("bloodlineSlots").value);
+  const defs = getBloodlineDefinitions();
+  const previous = editingBloodline;
+  if(previous && previous !== name && defs[name]){
+    return alert("A bloodline with that name already exists.");
+  }
+  if(previous && previous !== name){
+    renameBloodline(previous, name);
+  }
+  store.meta.bloodlines[name] = {
+    name,
+    description,
+    notes
+  };
+  const fallbackSlots = getBloodlineSlots()[name] || 12;
+  updateBloodlineSlots(name, slotsInput || fallbackSlots);
+  resetBloodlineForm();
+  saveStore();
+};
+
+el("btnBloodlineReset").onclick = () => resetBloodlineForm();
+
 function clearCreateForm(){
   el("pName").value = "";
   el("pSex").value = "";
@@ -1998,6 +2376,15 @@ function clearCreateForm(){
   el("pHouse").value = "";
   el("pTitles").value = "";
   el("pNotes").value = "";
+}
+
+function resetBloodlineForm(){
+  editingBloodline = null;
+  el("bloodlineName").value = "";
+  el("bloodlineDesc").value = "";
+  el("bloodlineNotes").value = "";
+  el("bloodlineSlots").value = "";
+  el("btnBloodlineSave").textContent = "Add Bloodline";
 }
 
 el("q").addEventListener("input", () => renderPeopleList());
@@ -2073,6 +2460,14 @@ let isDragging = false;
 let dragStart = { x: 0, y: 0 };
 let pinchStartDistance = null;
 let pinchStartScale = 1;
+
+if(expandedToggle){
+  expandedToggle.addEventListener("change", (event) => {
+    expandedView = event.target.checked;
+    applyExpandedView();
+    saveExpandedView();
+  });
+}
 
 el("btnZoomIn").onclick = () => {
   const rect = treeSvg.getBoundingClientRect();
