@@ -427,6 +427,23 @@
         <span class="warn">Note:</span> GEDCOM export is “lite” (enough for many tools, but not full fidelity for fantasy calendars).
         For maximum interoperability, use JSON as your source of truth, then generate DOT/Mermaid for visuals.
       </div>
+
+      <div class="hr"></div>
+
+      <div class="sectionTitle">Language Inputs (JSON)</div>
+      <div class="row">
+        <button id="btnInputsTemplate">Insert Template</button>
+        <button class="ok" id="btnInputsApply">Load Inputs JSON</button>
+        <button id="btnInputsClear">Clear Stored Inputs</button>
+      </div>
+      <label>Upload JSON File</label>
+      <input type="file" id="inputsFile" accept=".json,application/json" />
+      <label>Inputs JSON</label>
+      <textarea id="inputsBox" class="mono" placeholder="Paste Inputs JSON here (phonology, orthography, lexicon_generation, grammar_morphology_lite)…"></textarea>
+      <div class="status" id="inputsStatus">No inputs loaded.</div>
+      <div class="hint">
+        This is separate from local-storage presets. Use it to load phoneme inventories, templates, and grammar settings from a JSON file or pasted markup.
+      </div>
       </div>
     </details>
   </section>
@@ -495,6 +512,58 @@
 const STORAGE_KEY = "wb_family_tree_v1";
 const THEME_KEY = "wb_family_tree_theme_v1";
 const HOUSE_COLOR_KEY = "wb_family_tree_house_colors_v1";
+const LANGUAGE_INPUTS_KEY = "wb_language_inputs_v1";
+const LANGUAGE_INPUTS_TEMPLATE = {
+  phonology: {
+    phoneme_inventory: {
+      consonants: [],
+      vowels: []
+    },
+    syllable_templates: {
+      weighted: {
+        V: 0,
+        CV: 0,
+        CVC: 0,
+        CCV: 0,
+        CCVC: 0
+      },
+      allow_non_listed_clusters: false
+    },
+    clusters: {
+      onset: {
+        weighted: {}
+      },
+      coda: {
+        weighted: {}
+      }
+    },
+    constraints: {
+      forbidden_sequences: [],
+      forbidden_word_initial_tokens: [],
+      forbidden_word_final_tokens: [],
+      min_syllables: 1,
+      max_syllables: 1
+    }
+  },
+  orthography: {
+    show_romanization: false,
+    mapping: {}
+  },
+  lexicon_generation: {
+    meaning_list: "",
+    number_of_words: 0,
+    minimum_edit_distance: 0,
+    allow_homophones: false
+  },
+  grammar_morphology_lite: {
+    word_order: "",
+    adpositions: "",
+    adjective_position: "",
+    negation_strategy: "",
+    plural_suffix_tokens: [],
+    past_tense_suffix_tokens: []
+  }
+};
 const BLOODLINE_DEFAULT_SLOTS = {
   Drake: 12,
   Moon: 12
@@ -544,6 +613,33 @@ function normalizeStore(candidate){
   normalized.people = normalized.people || {};
   normalized.meta = withDefaultBloodlineMeta(normalized.meta || {});
   return normalized;
+}
+
+function loadLanguageInputs(){
+  try{
+    const raw = localStorage.getItem(LANGUAGE_INPUTS_KEY);
+    if(!raw) return null;
+    const parsed = JSON.parse(raw);
+    return validateLanguageInputs(parsed) ? parsed : null;
+  }catch{
+    return null;
+  }
+}
+
+function saveLanguageInputs(payload){
+  localStorage.setItem(LANGUAGE_INPUTS_KEY, JSON.stringify(payload));
+}
+
+function validateLanguageInputs(payload){
+  if(!payload || typeof payload !== "object") return false;
+  const required = ["phonology", "orthography", "lexicon_generation", "grammar_morphology_lite"];
+  if(!required.every((key) => key in payload)) return false;
+  if(!payload.phonology || typeof payload.phonology !== "object") return false;
+  if(!payload.phonology.phoneme_inventory) return false;
+  if(!payload.phonology.syllable_templates) return false;
+  if(!payload.phonology.clusters) return false;
+  if(!payload.phonology.constraints) return false;
+  return true;
 }
 
 function withDefaultBloodlineMeta(meta){
@@ -1955,6 +2051,41 @@ function importJSON({ merge }){
 }
 
 /** ===========================
+ *  Language Inputs
+ *  =========================== */
+function renderLanguageInputsStatus(){
+  const statusEl = el("inputsStatus");
+  if(!statusEl) return;
+  const stored = loadLanguageInputs();
+  statusEl.textContent = stored
+    ? "Inputs loaded and saved in local storage."
+    : "No inputs loaded.";
+}
+
+function applyLanguageInputs(payload){
+  if(!validateLanguageInputs(payload)){
+    alert("Inputs JSON is missing required sections (phonology, orthography, lexicon_generation, grammar_morphology_lite).");
+    return false;
+  }
+  saveLanguageInputs(payload);
+  renderLanguageInputsStatus();
+  el("inputsBox").value = JSON.stringify(payload, null, 2);
+  alert("Inputs JSON loaded.");
+  return true;
+}
+
+function applyLanguageInputsFromText(raw){
+  if(!raw) return alert("Paste Inputs JSON first.");
+  let parsed;
+  try{
+    parsed = JSON.parse(raw);
+  }catch{
+    return alert("Invalid JSON.");
+  }
+  applyLanguageInputs(parsed);
+}
+
+/** ===========================
  *  Wire UI
  *  =========================== */
 el("btnAdd").onclick = () => {
@@ -2038,6 +2169,28 @@ el("btnDownload").onclick = () => {
 
 el("btnImport").onclick = () => importJSON({ merge:false });
 el("btnMergeImport").onclick = () => importJSON({ merge:true });
+
+el("btnInputsTemplate").onclick = () => {
+  el("inputsBox").value = JSON.stringify(LANGUAGE_INPUTS_TEMPLATE, null, 2);
+};
+el("btnInputsApply").onclick = () => applyLanguageInputsFromText(el("inputsBox").value.trim());
+el("btnInputsClear").onclick = () => {
+  if(!confirm("Clear stored language inputs from local storage?")) return;
+  localStorage.removeItem(LANGUAGE_INPUTS_KEY);
+  el("inputsBox").value = "";
+  renderLanguageInputsStatus();
+};
+el("inputsFile").addEventListener("change", async (event) => {
+  const file = event.target.files && event.target.files[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    el("inputsBox").value = text.trim();
+    applyLanguageInputsFromText(text.trim());
+  }catch{
+    alert("Could not read the selected file.");
+  }
+});
 
 el("btnSave").onclick = () => saveStore();
 
@@ -2300,6 +2453,7 @@ function renderThemeControls(){
 applyTheme(currentTheme);
 renderThemeControls();
 render();
+renderLanguageInputsStatus();
 
 const houseColorModal = el("houseColorModal");
 const houseColorTitle = el("houseColorTitle");
