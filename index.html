@@ -495,14 +495,28 @@
 const STORAGE_KEY = "wb_family_tree_v1";
 const THEME_KEY = "wb_family_tree_theme_v1";
 const HOUSE_COLOR_KEY = "wb_family_tree_house_colors_v1";
-let store = loadStore() ?? freshStore();
+const BLOODLINE_DEFAULT_SLOTS = {
+  Drake: 12,
+  Moon: 12
+};
+const BLOODLINE_DEFAULT_SETTINGS = {
+  mutationRate: 0.01,
+  reinforcementRate: 0,
+  latentThreshold: 0.6,
+  enableLatent: false,
+  totalStrengthCap: null
+};
+let store = normalizeStore(loadStore() ?? freshStore());
 let selectedId = null;
 let sortMode = "name";
 let currentTheme = loadTheme();
 let houseColorOverrides = loadHouseColorOverrides();
 
 function freshStore(){
-  return { people: {}, meta: { version: 1, updatedAt: new Date().toISOString() } };
+  return {
+    people: {},
+    meta: withDefaultBloodlineMeta({ version: 2, updatedAt: new Date().toISOString() })
+  };
 }
 function uid(){
   // short stable-ish id: p_ + 10 chars
@@ -520,11 +534,41 @@ function loadStore(){
     const parsed = JSON.parse(raw);
     // basic shape check
     if(!parsed || typeof parsed !== "object" || !parsed.people) return null;
-    return parsed;
+    return normalizeStore(parsed);
   }catch{ return null; }
 }
 
+function normalizeStore(candidate){
+  if(!candidate || typeof candidate !== "object") return freshStore();
+  const normalized = candidate;
+  normalized.people = normalized.people || {};
+  normalized.meta = withDefaultBloodlineMeta(normalized.meta || {});
+  return normalized;
+}
+
+function withDefaultBloodlineMeta(meta){
+  const next = { ...meta };
+  next.version = next.version || 2;
+  next.bloodlineSlots = {
+    ...BLOODLINE_DEFAULT_SLOTS,
+    ...(next.bloodlineSlots || {})
+  };
+  next.bloodlineSettings = {
+    ...BLOODLINE_DEFAULT_SETTINGS,
+    ...(next.bloodlineSettings || {})
+  };
+  return next;
+}
+
 function personById(id){ return store.people[id] || null; }
+
+function getBloodlineSlots(){
+  return store?.meta?.bloodlineSlots || { ...BLOODLINE_DEFAULT_SLOTS };
+}
+
+function getBloodlineSettings(){
+  return store?.meta?.bloodlineSettings || { ...BLOODLINE_DEFAULT_SETTINGS };
+}
 
 function defaultTheme(){
   return {
@@ -722,9 +766,20 @@ function normalizeTitles(s){
 }
 function safeName(p){ return (p?.name || "").trim() || "(unnamed)"; }
 
-function addPerson({ name, sex, birth, death, house, titles, notes }){
+function addPerson({
+  name,
+  sex,
+  birth,
+  death,
+  house,
+  titles,
+  notes,
+  parents = [],
+  bloodlineStrengths = null,
+  rng = Math.random
+}){
   const id = uid();
-  store.people[id] = {
+  const person = {
     id,
     name: (name || "").trim(),
     sex: sex || "",
@@ -735,8 +790,19 @@ function addPerson({ name, sex, birth, death, house, titles, notes }){
     notes: notes || "",
     parents: [],
     partners: [],
-    children: []
+    children: [],
+    bloodlines: {},
+    bloodlinesAuto: false
   };
+  if(bloodlineStrengths && typeof bloodlineStrengths === "object"){
+    person.bloodlines = seedBloodlinesFromStrengths(bloodlineStrengths, rng);
+    person.bloodlinesAuto = false;
+  }
+  store.people[id] = person;
+  if(Array.isArray(parents) && parents.length){
+    parents.filter(Boolean).forEach(parentId => linkParentChild(parentId, id));
+    applyBloodlinesFromParents(id);
+  }
   return id;
 }
 
@@ -752,6 +818,7 @@ function linkParentChild(parentId, childId){
 
   if(!parent.children.includes(childId)) parent.children.push(childId);
   if(!child.parents.includes(parentId)) child.parents.push(parentId);
+  applyBloodlinesFromParents(childId);
 }
 
 function unlinkParentChild(parentId, childId){
@@ -761,6 +828,121 @@ function unlinkParentChild(parentId, childId){
 
   removeIdFromArray(parent.children, childId);
   removeIdFromArray(child.parents, parentId);
+}
+
+function seedBloodlinesFromStrengths(strengths, rng = Math.random){
+  const slots = getBloodlineSlots();
+  const result = {};
+  Object.entries(strengths || {}).forEach(([bloodline, strength]) => {
+    const slotCount = slots[bloodline];
+    if(!slotCount) return;
+    result[bloodline] = createTokensFromStrength(strength, slotCount, rng);
+  });
+  return result;
+}
+
+function createTokensFromStrength(strength, slots, rng = Math.random){
+  const clamped = Math.max(0, Math.min(1, Number(strength) || 0));
+  const ones = Math.round(clamped * slots);
+  const indices = [...Array(slots).keys()];
+  shuffleInPlace(indices, rng);
+  const tokens = Array(slots).fill(0);
+  for(let i = 0; i < ones; i += 1){
+    tokens[indices[i]] = 1;
+  }
+  return tokens;
+}
+
+function shuffleInPlace(arr, rng = Math.random){
+  for(let i = arr.length - 1; i > 0; i -= 1){
+    const j = Math.floor(rng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function computeBloodlineStrength(tokens){
+  if(!Array.isArray(tokens) || tokens.length === 0) return 0;
+  const ones = tokens.reduce((sum, val) => sum + (val ? 1 : 0), 0);
+  return ones / tokens.length;
+}
+
+function getBloodlineStrength(person, bloodline){
+  return computeBloodlineStrength(person?.bloodlines?.[bloodline]);
+}
+
+function normalizeTokens(tokens, slots){
+  const normalized = Array.isArray(tokens) ? tokens.slice(0, slots).map(v => (v ? 1 : 0)) : [];
+  while(normalized.length < slots) normalized.push(0);
+  return normalized;
+}
+
+function getBloodlineSlotCount(name, parentA, parentB){
+  const slots = getBloodlineSlots();
+  if(slots[name]) return slots[name];
+  const tokensA = parentA?.bloodlines?.[name];
+  const tokensB = parentB?.bloodlines?.[name];
+  return tokensA?.length || tokensB?.length || null;
+}
+
+function inheritBloodlines({
+  parentA,
+  parentB,
+  mutationRate = 0,
+  reinforcementRate = 0,
+  rng = Math.random
+}){
+  const names = new Set([
+    ...Object.keys(getBloodlineSlots()),
+    ...Object.keys(parentA?.bloodlines || {}),
+    ...Object.keys(parentB?.bloodlines || {})
+  ]);
+  const result = {};
+  for(const bloodline of names){
+    const slotCount = getBloodlineSlotCount(bloodline, parentA, parentB);
+    if(!slotCount) continue;
+    const tokensA = parentA?.bloodlines?.[bloodline];
+    const tokensB = parentB?.bloodlines?.[bloodline];
+    if(!tokensA && !tokensB) continue;
+    const parentTokensA = tokensA ? normalizeTokens(tokensA, slotCount) : Array(slotCount).fill(0);
+    const parentTokensB = tokensB ? normalizeTokens(tokensB, slotCount) : Array(slotCount).fill(0);
+    const childTokens = [];
+    for(let i = 0; i < slotCount; i += 1){
+      let inherited = rng() < 0.5 ? parentTokensA[i] : parentTokensB[i];
+      if(reinforcementRate > 0 && parentTokensA[i] === 1 && parentTokensB[i] === 1 && rng() < reinforcementRate){
+        inherited = 1;
+      }
+      if(mutationRate > 0 && rng() < mutationRate){
+        inherited = inherited ? 0 : 1;
+      }
+      childTokens.push(inherited);
+    }
+    result[bloodline] = childTokens;
+  }
+  return result;
+}
+
+function hasBloodlines(person){
+  return person && person.bloodlines && Object.keys(person.bloodlines).length > 0;
+}
+
+function applyBloodlinesFromParents(childId, { force = false } = {}){
+  const child = personById(childId);
+  if(!child) return;
+  const parents = (child.parents || []).map(id => personById(id)).filter(Boolean);
+  if(parents.length === 0) return;
+  if(!force && hasBloodlines(child) && !child.bloodlinesAuto) return;
+  const settings = getBloodlineSettings();
+  const inherited = inheritBloodlines({
+    parentA: parents[0] || null,
+    parentB: parents[1] || null,
+    mutationRate: settings.mutationRate,
+    reinforcementRate: settings.reinforcementRate
+  });
+  if(Object.keys(inherited).length){
+    child.bloodlines = inherited;
+    child.bloodlinesAuto = true;
+  }
 }
 
 function linkPartners(aId, bId){
@@ -1744,7 +1926,7 @@ function importJSON({ merge }){
   }
 
   if(!merge){
-    store = parsed;
+    store = normalizeStore(parsed);
     selectedId = null;
     saveStore();
     return;
