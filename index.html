@@ -294,6 +294,132 @@
     .sliderRow input[type="range"]{
       width:100%;
     }
+    .viewTabs{
+      display:flex;
+      gap:8px;
+      margin-bottom:12px;
+    }
+    .viewTabs button{
+      border-radius:999px;
+      padding:8px 14px;
+      font-size:12px;
+    }
+    .viewTabs button.active{
+      background:linear-gradient(180deg, rgba(110,231,255,.24), rgba(110,231,255,.08));
+      border-color:rgba(110,231,255,.35);
+      color:var(--text);
+    }
+    .viewPanel{
+      display:none;
+    }
+    .viewPanel.active{
+      display:block;
+    }
+    .timelineControls{
+      display:grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+      gap:10px;
+      align-items:end;
+      margin-bottom:12px;
+    }
+    @media (max-width: 980px){
+      .timelineControls{
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    .timelineWrap{
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:radial-gradient(circle at 20% 20%, rgba(110,231,255,.08), transparent 45%), var(--tree-bg);
+      overflow:hidden;
+    }
+    .timelineScroller{
+      overflow:auto;
+      padding:14px;
+    }
+    .timelineInner{
+      position:relative;
+      min-height:220px;
+      padding:10px 30px 20px;
+    }
+    .timelineAxis{
+      position:absolute;
+      top:34px;
+      left:0;
+      right:0;
+      height:2px;
+      background:rgba(110,231,255,.2);
+    }
+    .timelineTick{
+      position:absolute;
+      top:24px;
+      width:1px;
+      height:20px;
+      background:rgba(110,231,255,.35);
+    }
+    .timelineTickLabel{
+      position:absolute;
+      top:46px;
+      transform:translateX(-50%);
+      font-size:11px;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .timelineEntries{
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+    }
+    .timelineEntry{
+      position:absolute;
+      display:flex;
+      gap:8px;
+      align-items:flex-start;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.1);
+      background:rgba(15,21,30,.9);
+      color:var(--text);
+      box-shadow:0 10px 20px rgba(0,0,0,.25);
+      transform:translate(-50%, 0);
+      transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+      pointer-events:auto;
+      cursor:pointer;
+      min-width:180px;
+      max-width:240px;
+    }
+    .timelineEntry:hover{
+      transform:translate(-50%, -4px) scale(1.02);
+      box-shadow:0 16px 30px rgba(110,231,255,.25);
+      border-color:rgba(110,231,255,.45);
+    }
+    .timelineEntry.is-selected{
+      border-color:rgba(110,231,255,.6);
+      box-shadow:0 18px 34px rgba(110,231,255,.3);
+    }
+    .timelineDot{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      background:var(--accent);
+      box-shadow:0 0 8px rgba(110,231,255,.6);
+      margin-top:6px;
+      flex-shrink:0;
+    }
+    .timelineContent{
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      text-align:left;
+    }
+    .timelineName{
+      font-weight:700;
+      font-size:13px;
+    }
+    .timelineMeta{
+      font-size:11px;
+      color:var(--muted);
+    }
   </style>
 </head>
 <body>
@@ -335,6 +461,12 @@
         <div>
           <label>Death (string)</label>
           <input id="pDeath" placeholder="optional" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Timeline Value (number)</label>
+          <input id="pTimeline" type="number" step="any" placeholder="e.g., 982" />
         </div>
       </div>
       <div class="row">
@@ -416,36 +548,86 @@
     </details>
 
     <details class="panel" open>
-      <summary class="panelSummary">Tree View</summary>
+      <summary class="panelSummary">Visual Views</summary>
       <div class="panelBody">
-      <div class="toolbar" style="margin-bottom:8px">
-        <div class="left treeControls">
-          <button id="btnZoomIn">Zoom +</button>
-          <button id="btnZoomOut">Zoom −</button>
-          <button id="btnZoomReset">Reset View</button>
+        <div class="viewTabs">
+          <button type="button" class="active" data-view-tab="tree">Tree</button>
+          <button type="button" data-view-tab="timeline">Timeline</button>
         </div>
-        <div class="row" style="gap:12px;align-items:center">
-          <label class="inlineToggle">
-            <input type="checkbox" id="expandedToggle" />
-            Expanded View
-          </label>
-          <div class="status" id="treeStatus">Zoom 100%</div>
+
+        <div class="viewPanel active" data-view-panel="tree">
+          <div class="toolbar" style="margin-bottom:8px">
+            <div class="left treeControls">
+              <button id="btnZoomIn">Zoom +</button>
+              <button id="btnZoomOut">Zoom −</button>
+              <button id="btnZoomReset">Reset View</button>
+            </div>
+            <div class="row" style="gap:12px;align-items:center">
+              <label class="inlineToggle">
+                <input type="checkbox" id="expandedToggle" />
+                Expanded View
+              </label>
+              <div class="status" id="treeStatus">Zoom 100%</div>
+            </div>
+          </div>
+          <div class="treeWrap" id="treeWrap">
+            <svg id="treeSvg" class="treeCanvas" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid meet">
+              <g id="treeViewport">
+                <rect x="-6000" y="-6000" width="12000" height="12000" fill="transparent"></rect>
+              </g>
+            </svg>
+          </div>
+          <div class="treeHint">
+            Drag to pan. Scroll or pinch to zoom. Click a card to select.
+          </div>
+          <div class="sectionTitle" style="margin-top:12px">Houses</div>
+          <div class="treeLegend" id="treeLegend"></div>
+          <div class="sectionTitle" style="margin-top:12px">Bloodlines</div>
+          <div class="treeLegend legendStack" id="bloodlineLegend"></div>
         </div>
-      </div>
-      <div class="treeWrap" id="treeWrap">
-        <svg id="treeSvg" class="treeCanvas" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid meet">
-          <g id="treeViewport">
-            <rect x="-6000" y="-6000" width="12000" height="12000" fill="transparent"></rect>
-          </g>
-        </svg>
-      </div>
-      <div class="treeHint">
-        Drag to pan. Scroll or pinch to zoom. Click a card to select.
-      </div>
-      <div class="sectionTitle" style="margin-top:12px">Houses</div>
-      <div class="treeLegend" id="treeLegend"></div>
-      <div class="sectionTitle" style="margin-top:12px">Bloodlines</div>
-      <div class="treeLegend legendStack" id="bloodlineLegend"></div>
+
+        <div class="viewPanel" data-view-panel="timeline">
+          <div class="toolbar" style="margin-bottom:8px">
+            <div class="left treeControls">
+              <button id="btnTimelineAuto">Auto-fit</button>
+            </div>
+            <div class="status" id="timelineStatus">Zoom 100%</div>
+          </div>
+          <div class="timelineControls">
+            <div>
+              <label>Start</label>
+              <input id="timelineStart" type="number" step="any" />
+            </div>
+            <div>
+              <label>End</label>
+              <input id="timelineEnd" type="number" step="any" />
+            </div>
+            <div>
+              <label>Step</label>
+              <input id="timelineStep" type="number" step="any" />
+            </div>
+            <div>
+              <label>Unit Label</label>
+              <input id="timelineUnit" placeholder="Year" />
+            </div>
+            <div>
+              <label>Zoom</label>
+              <input id="timelineZoom" type="range" min="0.5" max="3" step="0.1" />
+            </div>
+            <button class="primary" id="btnTimelineApply">Apply</button>
+          </div>
+          <div class="timelineWrap">
+            <div class="timelineScroller" id="timelineScroller">
+              <div class="timelineInner" id="timelineInner">
+                <div class="timelineAxis"></div>
+                <div class="timelineEntries" id="timelineEntries"></div>
+              </div>
+            </div>
+          </div>
+          <div class="treeHint">
+            Scroll to zoom, hover for glow, click an entry to edit them in the detail panel.
+          </div>
+        </div>
       </div>
     </details>
 
@@ -564,6 +746,7 @@
  *        id, name, sex, birth, death, house,
  *        titles: string[],
  *        notes: string,
+ *        timelineValue: number | null,
  *        parents: string[],   // up to 2 typically, but we don't enforce
  *        partners: string[],  // spouses/partners
  *        children: string[],  // derived or manual; we keep it explicit for performance on large trees
@@ -578,6 +761,7 @@ const STORAGE_KEY = "wb_family_tree_v1";
 const THEME_KEY = "wb_family_tree_theme_v1";
 const HOUSE_COLOR_KEY = "wb_family_tree_house_colors_v1";
 const EXPANDED_VIEW_KEY = "wb_family_tree_expanded_view_v1";
+const VIEW_TAB_KEY = "wb_family_tree_view_tab_v1";
 const BLOODLINE_DEFAULT_SLOTS = {
   Drake: 12,
   Moon: 12
@@ -588,6 +772,13 @@ const BLOODLINE_DEFAULT_SETTINGS = {
   latentThreshold: 0.6,
   enableLatent: false,
   totalStrengthCap: null
+};
+const DEFAULT_TIMELINE_SETTINGS = {
+  start: 0,
+  end: 100,
+  step: 10,
+  zoom: 1,
+  unit: "Year"
 };
 const BLOODLINE_DEFAULT_DEFINITIONS = {
   Drake: {
@@ -607,6 +798,7 @@ let sortMode = "name";
 let currentTheme = loadTheme();
 let houseColorOverrides = loadHouseColorOverrides();
 let expandedView = loadExpandedView();
+let activeViewTab = loadViewTab();
 let editingBloodline = null;
 
 function freshStore(){
@@ -660,6 +852,7 @@ function withDefaultBloodlineMeta(meta){
     ...BLOODLINE_DEFAULT_SETTINGS,
     ...(next.bloodlineSettings || {})
   };
+  next.timelineSettings = normalizeTimelineSettings(next.timelineSettings);
   return next;
 }
 
@@ -679,6 +872,23 @@ function normalizeBloodlineDefinitions(definitions){
   return result;
 }
 
+function normalizeTimelineSettings(settings){
+  const base = { ...DEFAULT_TIMELINE_SETTINGS };
+  if(!settings || typeof settings !== "object") return base;
+  const next = { ...base, ...settings };
+  const start = Number(next.start);
+  const end = Number(next.end);
+  const step = Number(next.step);
+  const zoom = Number(next.zoom);
+  return {
+    start: Number.isFinite(start) ? start : base.start,
+    end: Number.isFinite(end) ? end : base.end,
+    step: Number.isFinite(step) && step > 0 ? step : base.step,
+    zoom: Number.isFinite(zoom) && zoom > 0 ? zoom : base.zoom,
+    unit: typeof next.unit === "string" && next.unit.trim() ? next.unit.trim() : base.unit
+  };
+}
+
 function personById(id){ return store.people[id] || null; }
 
 function getBloodlineSlots(){
@@ -691,6 +901,20 @@ function getBloodlineSettings(){
 
 function getBloodlineDefinitions(){
   return store?.meta?.bloodlines || normalizeBloodlineDefinitions(null);
+}
+
+function getTimelineSettings(){
+  return store?.meta?.timelineSettings || normalizeTimelineSettings(null);
+}
+
+function updateTimelineSettings(patch, { save = true } = {}){
+  const current = getTimelineSettings();
+  store.meta.timelineSettings = normalizeTimelineSettings({
+    ...current,
+    ...patch
+  });
+  if(save) saveStore();
+  else renderTimeline();
 }
 
 function updateBloodlineSlots(name, slots){
@@ -911,6 +1135,22 @@ function saveExpandedView(){
   localStorage.setItem(EXPANDED_VIEW_KEY, expandedView ? "true" : "false");
 }
 
+function loadViewTab(){
+  try{
+    return localStorage.getItem(VIEW_TAB_KEY) || "tree";
+  }catch{
+    return "tree";
+  }
+}
+
+function saveViewTab(){
+  try{
+    localStorage.setItem(VIEW_TAB_KEY, activeViewTab);
+  }catch{
+    // ignore storage issues
+  }
+}
+
 function applyTheme(theme){
   const root = document.documentElement;
   Object.entries(theme.values).forEach(([key, value]) => {
@@ -942,11 +1182,32 @@ function normalizeTitles(s){
 }
 function safeName(p){ return (p?.name || "").trim() || "(unnamed)"; }
 
+function parseTimelineInput(value){
+  const trimmed = (value ?? "").toString().trim();
+  if(!trimmed) return null;
+  const num = Number(trimmed);
+  return Number.isFinite(num) ? num : null;
+}
+
+function extractNumericValue(text){
+  const match = (text || "").toString().match(/-?\d+(?:\.\d+)?/);
+  if(!match) return null;
+  const num = Number(match[0]);
+  return Number.isFinite(num) ? num : null;
+}
+
+function getPersonTimelineValue(person){
+  if(!person) return null;
+  if(Number.isFinite(person.timelineValue)) return person.timelineValue;
+  return extractNumericValue(person.birth);
+}
+
 function addPerson({
   name,
   sex,
   birth,
   death,
+  timelineValue,
   house,
   titles,
   notes,
@@ -961,6 +1222,7 @@ function addPerson({
     sex: sex || "",
     birth: birth || "",
     death: death || "",
+    timelineValue: Number.isFinite(timelineValue) ? timelineValue : null,
     house: house || "",
     titles: titles || [],
     notes: notes || "",
@@ -1176,6 +1438,9 @@ function render(){
 
   // tree
   renderTree();
+
+  // timeline
+  renderTimeline();
 }
 
 function peopleArrayFiltered(){
@@ -1416,6 +1681,14 @@ function renderDetail(){
 
     <div class="row">
       <div>
+        <label>Timeline Value (number)</label>
+        <input id="eTimeline" type="number" step="any" value="${Number.isFinite(p.timelineValue) ? p.timelineValue : ""}" />
+        <div class="small">Used for the timeline view; if blank, the first number in Birth is used.</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
         <label>House/Clan</label>
         <input id="eHouse" value="${escapeAttr(p.house||"")}" />
       </div>
@@ -1510,6 +1783,7 @@ function renderDetail(){
     p2.sex = el("eSex").value;
     p2.birth = el("eBirth").value;
     p2.death = el("eDeath").value;
+    p2.timelineValue = parseTimelineInput(el("eTimeline").value);
     p2.house = el("eHouse").value;
     p2.titles = normalizeTitles(el("eTitles").value);
     p2.notes = el("eNotes").value;
@@ -1579,6 +1853,18 @@ function renderDetail(){
   });
 }
 
+function setActiveViewTab(tab){
+  const next = tab === "timeline" ? "timeline" : "tree";
+  activeViewTab = next;
+  document.querySelectorAll("[data-view-tab]").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-view-tab") === next);
+  });
+  document.querySelectorAll("[data-view-panel]").forEach(panel => {
+    panel.classList.toggle("active", panel.getAttribute("data-view-panel") === next);
+  });
+  saveViewTab();
+}
+
 function escapeHtml(s){
   return (s ?? "").toString()
     .replaceAll("&","&amp;")
@@ -1587,6 +1873,147 @@ function escapeHtml(s){
 }
 function escapeAttr(s){
   return escapeHtml(s).replaceAll('"',"&quot;");
+}
+
+/** ===========================
+ *  Timeline view
+ *  =========================== */
+function getTimelineEntries(){
+  return Object.values(store.people)
+    .map(person => {
+      const value = getPersonTimelineValue(person);
+      if(!Number.isFinite(value)) return null;
+      return { person, value };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.value - b.value);
+}
+
+function niceStepForRange(range){
+  if(!Number.isFinite(range) || range <= 0) return 1;
+  const raw = range / 6;
+  const power = Math.pow(10, Math.floor(Math.log10(raw)));
+  const scaled = raw / power;
+  let nice = 10;
+  if(scaled <= 1) nice = 1;
+  else if(scaled <= 2) nice = 2;
+  else if(scaled <= 5) nice = 5;
+  return nice * power;
+}
+
+function renderTimeline(){
+  const timelineInner = el("timelineInner");
+  const timelineEntries = el("timelineEntries");
+  if(!timelineInner || !timelineEntries) return;
+
+  const settings = getTimelineSettings();
+  const entries = getTimelineEntries();
+  let start = settings.start;
+  let end = settings.end;
+  if(start > end){
+    [start, end] = [end, start];
+  }
+  const step = settings.step;
+  const unit = settings.unit;
+  const zoom = settings.zoom;
+  const pxPerUnit = 80 * zoom;
+  const range = end - start;
+  const safeRange = Number.isFinite(range) && range !== 0 ? range : 1;
+  const width = Math.max(640, safeRange * pxPerUnit + 160);
+
+  timelineInner.style.width = `${width}px`;
+  timelineInner.style.minHeight = entries.length ? "240px" : "200px";
+
+  const axis = timelineInner.querySelector(".timelineAxis");
+  axis.style.left = "40px";
+  axis.style.right = "40px";
+
+  timelineInner.querySelectorAll(".timelineTick, .timelineTickLabel").forEach(node => node.remove());
+
+  if(Number.isFinite(start) && Number.isFinite(end) && step > 0){
+    for(let value = start; value <= end + step / 2; value += step){
+      const left = (value - start) * pxPerUnit + 40;
+      const tick = document.createElement("div");
+      tick.className = "timelineTick";
+      tick.style.left = `${left}px`;
+      const label = document.createElement("div");
+      label.className = "timelineTickLabel";
+      label.style.left = `${left}px`;
+      label.textContent = `${value}${unit ? " " + unit : ""}`;
+      timelineInner.appendChild(tick);
+      timelineInner.appendChild(label);
+    }
+  }
+
+  timelineEntries.innerHTML = "";
+
+  if(entries.length === 0){
+    const empty = document.createElement("div");
+    empty.className = "small";
+    empty.style.marginTop = "80px";
+    empty.textContent = "No timeline data yet. Add a Timeline Value or include a number in Birth.";
+    timelineEntries.appendChild(empty);
+  }else{
+    const lanes = Math.min(4, Math.max(2, Math.ceil(entries.length / 6)));
+    const laneHeight = 64;
+    timelineInner.style.minHeight = `${120 + lanes * laneHeight}px`;
+    entries.forEach((entry, idx) => {
+      const lane = idx % lanes;
+      const left = (entry.value - start) * pxPerUnit + 40;
+      const top = 70 + lane * laneHeight;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "timelineEntry";
+      if(entry.person.id === selectedId) button.classList.add("is-selected");
+      button.style.left = `${left}px`;
+      button.style.top = `${top}px`;
+      button.innerHTML = `
+        <span class="timelineDot"></span>
+        <span class="timelineContent">
+          <span class="timelineName">${escapeHtml(safeName(entry.person))}</span>
+          <span class="timelineMeta">${escapeHtml(entry.person.birth || "")}</span>
+        </span>
+      `;
+      button.onclick = () => {
+        selectedId = entry.person.id;
+        render();
+      };
+      timelineEntries.appendChild(button);
+    });
+  }
+
+  const timelineStatus = el("timelineStatus");
+  if(timelineStatus){
+    timelineStatus.textContent = `Zoom ${Math.round(zoom * 100)}%`;
+  }
+
+  const startInput = el("timelineStart");
+  const endInput = el("timelineEnd");
+  const stepInput = el("timelineStep");
+  const unitInput = el("timelineUnit");
+  const zoomInput = el("timelineZoom");
+  if(startInput) startInput.value = Number.isFinite(start) ? start : "";
+  if(endInput) endInput.value = Number.isFinite(end) ? end : "";
+  if(stepInput) stepInput.value = Number.isFinite(step) ? step : "";
+  if(unitInput) unitInput.value = unit || "";
+  if(zoomInput) zoomInput.value = zoom;
+}
+
+function autoFitTimeline(){
+  const entries = getTimelineEntries();
+  if(entries.length === 0) return;
+  const values = entries.map(entry => entry.value);
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+  if(min === max){
+    min -= 5;
+    max += 5;
+  }
+  const padding = (max - min) * 0.08;
+  min -= padding;
+  max += padding;
+  const step = niceStepForRange(max - min);
+  updateTimelineSettings({ start: min, end: max, step }, { save: true });
 }
 
 /** ===========================
@@ -2316,6 +2743,7 @@ el("btnAdd").onclick = () => {
     sex: el("pSex").value,
     birth: el("pBirth").value,
     death: el("pDeath").value,
+    timelineValue: parseTimelineInput(el("pTimeline").value),
     house: el("pHouse").value,
     titles: normalizeTitles(el("pTitles").value),
     notes: el("pNotes").value
@@ -2332,6 +2760,7 @@ el("btnAddAndSelect").onclick = () => {
     sex: el("pSex").value,
     birth: el("pBirth").value,
     death: el("pDeath").value,
+    timelineValue: parseTimelineInput(el("pTimeline").value),
     house: el("pHouse").value,
     titles: normalizeTitles(el("pTitles").value),
     notes: el("pNotes").value
@@ -2373,6 +2802,7 @@ function clearCreateForm(){
   el("pSex").value = "";
   el("pBirth").value = "";
   el("pDeath").value = "";
+  el("pTimeline").value = "";
   el("pHouse").value = "";
   el("pTitles").value = "";
   el("pNotes").value = "";
@@ -2451,6 +2881,51 @@ el("btnResetTheme").onclick = () => {
   saveTheme();
   renderThemeControls();
 };
+
+document.querySelectorAll("[data-view-tab]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    setActiveViewTab(btn.getAttribute("data-view-tab"));
+  });
+});
+setActiveViewTab(activeViewTab);
+
+el("btnTimelineApply").onclick = () => {
+  const current = getTimelineSettings();
+  const nextStart = parseTimelineInput(el("timelineStart").value);
+  const nextEnd = parseTimelineInput(el("timelineEnd").value);
+  const nextStep = parseTimelineInput(el("timelineStep").value);
+  const unitValue = el("timelineUnit").value;
+  updateTimelineSettings({
+    start: nextStart ?? current.start,
+    end: nextEnd ?? current.end,
+    step: nextStep ?? current.step,
+    unit: unitValue || current.unit
+  });
+};
+
+el("btnTimelineAuto").onclick = () => autoFitTimeline();
+
+el("timelineZoom").addEventListener("input", (event) => {
+  const nextZoom = Number(event.target.value);
+  updateTimelineSettings({ zoom: nextZoom }, { save: false });
+});
+
+el("timelineZoom").addEventListener("change", (event) => {
+  const nextZoom = Number(event.target.value);
+  updateTimelineSettings({ zoom: nextZoom }, { save: true });
+});
+
+const timelineScroller = el("timelineScroller");
+if(timelineScroller){
+  timelineScroller.addEventListener("wheel", (event) => {
+    if(!event.ctrlKey) return;
+    event.preventDefault();
+    const direction = Math.sign(event.deltaY);
+    const current = getTimelineSettings().zoom;
+    const next = Math.max(0.5, Math.min(3, current + (direction > 0 ? -0.1 : 0.1)));
+    updateTimelineSettings({ zoom: next }, { save: true });
+  }, { passive: false });
+}
 
 /** ===========================
  *  Tree interactions
