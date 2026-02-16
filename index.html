@@ -447,12 +447,16 @@
           <label>Sex/Gender</label>
           <select id="pSex">
             <option value="">(unspecified)</option>
-            <option value="M">M</option>
-            <option value="F">F</option>
+            <option value="M">Male ♂️</option>
+            <option value="F">Female ♀️</option>
             <option value="X">X / other</option>
           </select>
         </div>
       </div>
+      <label class="inlineToggle" style="margin-top:2px">
+        <input id="pRuler" type="checkbox" />
+        Crown title (ruler/emperor) 👑
+      </label>
       <div class="twoCol">
         <div>
           <label>Birth Year</label>
@@ -750,6 +754,7 @@
  *    people: {
  *      [id]: {
  *        id, name, sex, birth, death, house,
+ *        isRuler: boolean,
  *        titles: string[],
  *        notes: string,
  *        timelineValue: number | null,
@@ -768,10 +773,7 @@ const THEME_KEY = "wb_family_tree_theme_v1";
 const HOUSE_COLOR_KEY = "wb_family_tree_house_colors_v1";
 const EXPANDED_VIEW_KEY = "wb_family_tree_expanded_view_v1";
 const VIEW_TAB_KEY = "wb_family_tree_view_tab_v1";
-const BLOODLINE_DEFAULT_SLOTS = {
-  Drake: 12,
-  Moon: 12
-};
+const BLOODLINE_DEFAULT_SLOTS = {};
 const BLOODLINE_DEFAULT_SETTINGS = {
   mutationRate: 0.01,
   reinforcementRate: 0,
@@ -786,18 +788,7 @@ const DEFAULT_TIMELINE_SETTINGS = {
   zoom: 1,
   unit: "Year"
 };
-const BLOODLINE_DEFAULT_DEFINITIONS = {
-  Drake: {
-    name: "Drake",
-    description: "Ancient draconic ancestry.",
-    notes: ""
-  },
-  Moon: {
-    name: "Moon",
-    description: "Lunar-touched lineage.",
-    notes: ""
-  }
-};
+const BLOODLINE_DEFAULT_DEFINITIONS = {};
 let store = normalizeStore(loadStore() ?? freshStore());
 let selectedId = null;
 let sortMode = "name";
@@ -837,7 +828,18 @@ function normalizeStore(candidate){
   if(!candidate || typeof candidate !== "object") return freshStore();
   const normalized = candidate;
   normalized.people = normalized.people || {};
+  Object.values(normalized.people).forEach((person) => {
+    person.isRuler = !!person.isRuler;
+    person.titles = Array.isArray(person.titles) ? person.titles : [];
+  });
   normalized.meta = withDefaultBloodlineMeta(normalized.meta || {});
+  ["Drake", "Moon"].forEach((legacyName) => {
+    if(normalized.meta?.bloodlines) delete normalized.meta.bloodlines[legacyName];
+    if(normalized.meta?.bloodlineSlots) delete normalized.meta.bloodlineSlots[legacyName];
+    Object.values(normalized.people).forEach((person) => {
+      if(person?.bloodlines) delete person.bloodlines[legacyName];
+    });
+  });
   return normalized;
 }
 
@@ -1187,6 +1189,11 @@ function normalizeTitles(s){
     .filter(Boolean);
 }
 function safeName(p){ return (p?.name || "").trim() || "(unnamed)"; }
+function personEmoji(person){
+  if(person?.sex === "M") return "♂️";
+  if(person?.sex === "F") return "♀️";
+  return "";
+}
 
 function parseTimelineInput(value){
   const trimmed = (value ?? "").toString().trim();
@@ -1243,6 +1250,7 @@ function addPerson({
   death,
   timelineValue,
   house,
+  isRuler = false,
   titles,
   notes,
   parents = [],
@@ -1258,6 +1266,7 @@ function addPerson({
     death: death || "",
     timelineValue: Number.isFinite(timelineValue) ? timelineValue : null,
     house: house || "",
+    isRuler: !!isRuler,
     titles: titles || [],
     notes: notes || "",
     parents: [],
@@ -1514,7 +1523,7 @@ function renderPeopleList(){
     div.innerHTML = `
       <div class="cardTop">
         <div>
-          <div class="name">${escapeHtml(safeName(p))}</div>
+          <div class="name">${p.isRuler ? "👑 " : ""}${escapeHtml(safeName(p))} ${personEmoji(p)}</div>
           <div class="small">${escapeHtml(p.house || "")}${p.house && p.birth ? " • " : ""}${escapeHtml(p.birth || "")}</div>
           <div class="tags">
             ${(p.titles||[]).slice(0,6).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
@@ -1695,12 +1704,16 @@ function renderDetail(){
         <label>Sex/Gender</label>
         <select id="eSex">
           <option value="" ${p.sex===""?"selected":""}>(unspecified)</option>
-          <option value="M" ${p.sex==="M"?"selected":""}>M</option>
-          <option value="F" ${p.sex==="F"?"selected":""}>F</option>
+          <option value="M" ${p.sex==="M"?"selected":""}>Male ♂️</option>
+          <option value="F" ${p.sex==="F"?"selected":""}>Female ♀️</option>
           <option value="X" ${p.sex==="X"?"selected":""}>X / other</option>
         </select>
       </div>
     </div>
+    <label class="inlineToggle" style="margin-top:4px">
+      <input id="eRuler" type="checkbox" ${p.isRuler ? "checked" : ""} />
+      Crown title (ruler/emperor) 👑
+    </label>
 
     <div class="twoCol">
       <div>
@@ -1820,6 +1833,7 @@ function renderDetail(){
     p2.death = el("eDeath").value;
     p2.timelineValue = parseTimelineInput(el("eTimeline").value);
     p2.house = el("eHouse").value;
+    p2.isRuler = !!el("eRuler").checked;
     p2.titles = normalizeTitles(el("eTitles").value);
     p2.notes = el("eNotes").value;
     saveStore();
@@ -2273,7 +2287,7 @@ function renderTree(){
   const maxPerLevel = Math.max(...Array.from(levels.values()).map(list => list.length), 1);
   const dynamicGapX = clamp(40, 90, 110 - maxPerLevel * 6);
   const dynamicGapY = clamp(40, 70, 70 - levelKeys.length * 2);
-  const nodeSize = { w: 180, h: 68, gapX: dynamicGapX, gapY: dynamicGapY };
+  const nodeSize = { w: 180, h: 84, gapX: dynamicGapX, gapY: dynamicGapY };
   const positions = new Map();
   let minX = Infinity;
   let maxX = -Infinity;
@@ -2384,7 +2398,7 @@ function renderTree(){
     name.setAttribute("x","10");
     name.setAttribute("y","22");
     name.setAttribute("class","nodeLabel");
-    name.textContent = safeName(p);
+    name.textContent = `${p.isRuler ? "👑 " : ""}${safeName(p)} ${personEmoji(p)}`.trim();
     g.appendChild(name);
 
     if(p.house){
@@ -2396,10 +2410,19 @@ function renderTree(){
       g.appendChild(sub);
     }
 
+    if(p.titles && p.titles.length){
+      const titles = document.createElementNS("http://www.w3.org/2000/svg","text");
+      titles.setAttribute("x","10");
+      titles.setAttribute("y","56");
+      titles.setAttribute("class","nodeSub");
+      titles.textContent = p.titles.join(", ");
+      g.appendChild(titles);
+    }
+
     if(p.birth || p.death){
       const life = document.createElementNS("http://www.w3.org/2000/svg","text");
       life.setAttribute("x","10");
-      life.setAttribute("y","56");
+      life.setAttribute("y", p.titles && p.titles.length ? "72" : "56");
       life.setAttribute("class","nodeSub");
       const lifespan = [p.birth || "", p.death ? `– ${p.death}` : ""].join(" ").trim();
       const ageLabel = getAgeAtDeathLabel(p);
@@ -2833,6 +2856,7 @@ el("btnAdd").onclick = () => {
     birth: lifeData.birth,
     death: lifeData.death,
     house: el("pHouse").value,
+    isRuler: !!el("pRuler").checked,
     titles: normalizeTitles(el("pTitles").value),
     notes: el("pNotes").value
   });
@@ -2850,6 +2874,7 @@ el("btnAddAndSelect").onclick = () => {
     birth: lifeData.birth,
     death: lifeData.death,
     house: el("pHouse").value,
+    isRuler: !!el("pRuler").checked,
     titles: normalizeTitles(el("pTitles").value),
     notes: el("pNotes").value
   });
@@ -2892,6 +2917,7 @@ function clearCreateForm(){
   el("pDeath").value = "";
   el("pAgeAtDeath").value = "";
   el("pAlive").checked = false;
+  el("pRuler").checked = false;
   el("pHouse").value = "";
   el("pTitles").value = "";
   el("pNotes").value = "";
