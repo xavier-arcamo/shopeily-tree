@@ -455,18 +455,24 @@
       </div>
       <div class="twoCol">
         <div>
-          <label>Birth (string)</label>
-          <input id="pBirth" placeholder="e.g., 982 AE / Winter / 3rd Moon" />
+          <label>Birth Year</label>
+          <input id="pBirth" type="number" step="1" placeholder="e.g., 982" />
         </div>
         <div>
-          <label>Death (string)</label>
-          <input id="pDeath" placeholder="optional" />
+          <label>Death Year</label>
+          <input id="pDeath" type="number" step="1" placeholder="optional" />
         </div>
       </div>
       <div class="row">
         <div>
-          <label>Timeline Value (number)</label>
-          <input id="pTimeline" type="number" step="any" placeholder="e.g., 982" />
+          <label>Age at Death</label>
+          <input id="pAgeAtDeath" type="number" step="1" placeholder="auto-calculates from years" />
+        </div>
+        <div style="align-self:end">
+          <label class="inlineToggle">
+            <input id="pAlive" type="checkbox" />
+            Currently alive
+          </label>
         </div>
       </div>
       <div class="row">
@@ -486,7 +492,7 @@
         <button id="btnAddAndSelect">Add + Select</button>
       </div>
       <div class="hint">
-        Tip: Birth/Death are freeform so you can use your own calendar (AE, regnal years, etc.).
+        Tip: Enter any two values (birth year, death year, age at death) and the third is auto-calculated.
       </div>
       </div>
     </details>
@@ -1189,11 +1195,39 @@ function parseTimelineInput(value){
   return Number.isFinite(num) ? num : null;
 }
 
+function parseYearInput(value){
+  const trimmed = (value ?? "").toString().trim();
+  if(!trimmed) return null;
+  const year = Number(trimmed);
+  return Number.isFinite(year) ? year : null;
+}
+
 function extractNumericValue(text){
   const match = (text || "").toString().match(/-?\d+(?:\.\d+)?/);
   if(!match) return null;
   const num = Number(match[0]);
   return Number.isFinite(num) ? num : null;
+}
+
+function getLifeYears(person){
+  return {
+    birthYear: extractNumericValue(person?.birth),
+    deathYear: extractNumericValue(person?.death)
+  };
+}
+
+function getAgeAtDeath(person){
+  const { birthYear, deathYear } = getLifeYears(person);
+  if(!Number.isFinite(deathYear)) return null;
+  if(!Number.isFinite(birthYear)) return null;
+  return deathYear - birthYear;
+}
+
+function getAgeAtDeathLabel(person){
+  const { deathYear } = getLifeYears(person);
+  if(!Number.isFinite(deathYear)) return "N/A";
+  const age = getAgeAtDeath(person);
+  return Number.isFinite(age) ? String(age) : "--";
 }
 
 function getPersonTimelineValue(person){
@@ -1678,6 +1712,7 @@ function renderDetail(){
         <input id="eDeath" value="${escapeAttr(p.death||"")}" />
       </div>
     </div>
+    <div class="small">Age at death: ${escapeHtml(getAgeAtDeathLabel(p))}</div>
 
     <div class="row">
       <div>
@@ -1951,7 +1986,7 @@ function renderTimeline(){
     const empty = document.createElement("div");
     empty.className = "small";
     empty.style.marginTop = "80px";
-    empty.textContent = "No timeline data yet. Add a Timeline Value or include a number in Birth.";
+    empty.textContent = "No timeline data yet. Include a number in Birth.";
     timelineEntries.appendChild(empty);
   }else{
     const lanes = Math.min(4, Math.max(2, Math.ceil(entries.length / 6)));
@@ -2366,7 +2401,9 @@ function renderTree(){
       life.setAttribute("x","10");
       life.setAttribute("y","56");
       life.setAttribute("class","nodeSub");
-      life.textContent = [p.birth || "", p.death ? `– ${p.death}` : ""].join(" ").trim();
+      const lifespan = [p.birth || "", p.death ? `– ${p.death}` : ""].join(" ").trim();
+      const ageLabel = getAgeAtDeathLabel(p);
+      life.textContent = `${lifespan}${lifespan ? " • " : ""}Age: ${ageLabel}`;
       g.appendChild(life);
     }
 
@@ -2735,15 +2772,66 @@ function importJSON({ merge }){
 /** ===========================
  *  Wire UI
  *  =========================== */
+function syncCreatePersonAgeFields(changedField = ""){
+  const birthInput = el("pBirth");
+  const deathInput = el("pDeath");
+  const ageInput = el("pAgeAtDeath");
+  const aliveInput = el("pAlive");
+  if(!birthInput || !deathInput || !ageInput || !aliveInput) return;
+
+  const isAlive = aliveInput.checked;
+  deathInput.disabled = isAlive;
+  ageInput.disabled = isAlive;
+
+  if(isAlive){
+    deathInput.value = "";
+    ageInput.value = "";
+    return;
+  }
+
+  let birthYear = parseYearInput(birthInput.value);
+  let deathYear = parseYearInput(deathInput.value);
+  let ageAtDeath = parseYearInput(ageInput.value);
+
+  if(changedField === "birth"){
+    if(Number.isFinite(birthYear) && Number.isFinite(deathYear)) ageAtDeath = deathYear - birthYear;
+    else if(Number.isFinite(birthYear) && Number.isFinite(ageAtDeath)) deathYear = birthYear + ageAtDeath;
+  }else if(changedField === "death"){
+    if(Number.isFinite(birthYear) && Number.isFinite(deathYear)) ageAtDeath = deathYear - birthYear;
+    else if(Number.isFinite(deathYear) && Number.isFinite(ageAtDeath)) birthYear = deathYear - ageAtDeath;
+  }else if(changedField === "age"){
+    if(Number.isFinite(birthYear) && Number.isFinite(ageAtDeath)) deathYear = birthYear + ageAtDeath;
+    else if(Number.isFinite(deathYear) && Number.isFinite(ageAtDeath)) birthYear = deathYear - ageAtDeath;
+  }
+
+  if(Number.isFinite(birthYear) && Number.isFinite(deathYear) && !Number.isFinite(ageAtDeath)) ageAtDeath = deathYear - birthYear;
+  if(Number.isFinite(birthYear) && Number.isFinite(ageAtDeath) && !Number.isFinite(deathYear)) deathYear = birthYear + ageAtDeath;
+  if(Number.isFinite(deathYear) && Number.isFinite(ageAtDeath) && !Number.isFinite(birthYear)) birthYear = deathYear - ageAtDeath;
+
+  birthInput.value = Number.isFinite(birthYear) ? String(birthYear) : "";
+  deathInput.value = Number.isFinite(deathYear) ? String(deathYear) : "";
+  ageInput.value = Number.isFinite(ageAtDeath) ? String(ageAtDeath) : "";
+}
+
+function getCreatePersonLifeData(){
+  const birthYear = parseYearInput(el("pBirth").value);
+  const deathYear = parseYearInput(el("pDeath").value);
+  const alive = !!el("pAlive").checked;
+  return {
+    birth: Number.isFinite(birthYear) ? String(birthYear) : "",
+    death: (!alive && Number.isFinite(deathYear)) ? String(deathYear) : ""
+  };
+}
+
 el("btnAdd").onclick = () => {
   const name = el("pName").value.trim();
   if(!name) return alert("Name is required.");
+  const lifeData = getCreatePersonLifeData();
   addPerson({
     name,
     sex: el("pSex").value,
-    birth: el("pBirth").value,
-    death: el("pDeath").value,
-    timelineValue: parseTimelineInput(el("pTimeline").value),
+    birth: lifeData.birth,
+    death: lifeData.death,
     house: el("pHouse").value,
     titles: normalizeTitles(el("pTitles").value),
     notes: el("pNotes").value
@@ -2755,12 +2843,12 @@ el("btnAdd").onclick = () => {
 el("btnAddAndSelect").onclick = () => {
   const name = el("pName").value.trim();
   if(!name) return alert("Name is required.");
+  const lifeData = getCreatePersonLifeData();
   const id = addPerson({
     name,
     sex: el("pSex").value,
-    birth: el("pBirth").value,
-    death: el("pDeath").value,
-    timelineValue: parseTimelineInput(el("pTimeline").value),
+    birth: lifeData.birth,
+    death: lifeData.death,
     house: el("pHouse").value,
     titles: normalizeTitles(el("pTitles").value),
     notes: el("pNotes").value
@@ -2802,10 +2890,12 @@ function clearCreateForm(){
   el("pSex").value = "";
   el("pBirth").value = "";
   el("pDeath").value = "";
-  el("pTimeline").value = "";
+  el("pAgeAtDeath").value = "";
+  el("pAlive").checked = false;
   el("pHouse").value = "";
   el("pTitles").value = "";
   el("pNotes").value = "";
+  syncCreatePersonAgeFields();
 }
 
 function resetBloodlineForm(){
@@ -2816,6 +2906,12 @@ function resetBloodlineForm(){
   el("bloodlineSlots").value = "";
   el("btnBloodlineSave").textContent = "Add Bloodline";
 }
+
+el("pBirth").addEventListener("input", () => syncCreatePersonAgeFields("birth"));
+el("pDeath").addEventListener("input", () => syncCreatePersonAgeFields("death"));
+el("pAgeAtDeath").addEventListener("input", () => syncCreatePersonAgeFields("age"));
+el("pAlive").addEventListener("change", () => syncCreatePersonAgeFields("alive"));
+syncCreatePersonAgeFields();
 
 el("q").addEventListener("input", () => renderPeopleList());
 el("btnSortName").onclick = () => { sortMode = "name"; renderPeopleList(); };
