@@ -2249,6 +2249,12 @@ function resolveHouseColor(house){
   return colorForHouse(key);
 }
 
+function parentBranchKey(person){
+  const parentIds = (person.parents || []).filter(id => store.people[id]).slice().sort((a,b) => a - b);
+  if(parentIds.length === 0) return `root:${person.id}`;
+  return `parents:${parentIds.join("|")}`;
+}
+
 function renderTree(){
   const svg = el("treeSvg");
   const viewport = el("treeViewport");
@@ -2276,6 +2282,8 @@ function renderTree(){
   }
   for(const list of levels.values()){
     list.sort((a,b)=> {
+      const parentKeyCmp = parentBranchKey(a).localeCompare(parentBranchKey(b));
+      if(parentKeyCmp !== 0) return parentKeyCmp;
       const ga = partnerGroups.groupIdByPerson.get(a.id);
       const gb = partnerGroups.groupIdByPerson.get(b.id);
       if(ga !== gb) return ga - gb;
@@ -2295,16 +2303,28 @@ function renderTree(){
   let maxY = -Infinity;
   for(const level of levelKeys){
     const peopleAt = levels.get(level);
-    const totalWidth = peopleAt.length * (nodeSize.w + nodeSize.gapX) - nodeSize.gapX;
-    const offsetX = -totalWidth / 2;
     const y = level * (nodeSize.h + nodeSize.gapY);
+    const branchGapX = nodeSize.gapX + 120;
+    const widths = peopleAt.map(() => nodeSize.w);
+    let totalWidth = 0;
     peopleAt.forEach((p, i) => {
-      const x = offsetX + i * (nodeSize.w + nodeSize.gapX);
+      if(i > 0) totalWidth += nodeSize.gapX;
+      const prev = peopleAt[i - 1];
+      if(prev && parentBranchKey(prev) !== parentBranchKey(p)) totalWidth += branchGapX;
+      totalWidth += widths[i];
+    });
+    let cursorX = -totalWidth / 2;
+    peopleAt.forEach((p, i) => {
+      if(i > 0) cursorX += nodeSize.gapX;
+      const prev = peopleAt[i - 1];
+      if(prev && parentBranchKey(prev) !== parentBranchKey(p)) cursorX += branchGapX;
+      const x = cursorX;
       positions.set(p.id, { x, y });
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x + nodeSize.w);
       minY = Math.min(minY, y);
       maxY = Math.max(maxY, y + nodeSize.h);
+      cursorX += widths[i];
     });
   }
 
