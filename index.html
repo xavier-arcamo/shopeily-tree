@@ -2255,6 +2255,32 @@ function parentBranchKey(person){
   return `parents:${parentIds.join("|")}`;
 }
 
+function computeDescendantWeights(people){
+  const weightById = new Map();
+
+  const walk = (personId, trail = new Set()) => {
+    if(weightById.has(personId)) return weightById.get(personId);
+    const person = store.people[personId];
+    if(!person) return 1;
+    if(trail.has(personId)) return 1;
+    const nextTrail = new Set(trail);
+    nextTrail.add(personId);
+    let weight = 1;
+    for(const childId of (person.children || [])){
+      if(!store.people[childId]) continue;
+      weight += walk(childId, nextTrail) * 0.72;
+    }
+    const bounded = Math.min(weight, 26);
+    weightById.set(personId, bounded);
+    return bounded;
+  };
+
+  for(const person of people){
+    walk(person.id);
+  }
+  return weightById;
+}
+
 function renderTree(){
   const svg = el("treeSvg");
   const viewport = el("treeViewport");
@@ -2296,6 +2322,27 @@ function renderTree(){
   const dynamicGapX = clamp(40, 90, 110 - maxPerLevel * 6);
   const dynamicGapY = clamp(40, 70, 70 - levelKeys.length * 2);
   const nodeSize = { w: 180, h: 84, gapX: dynamicGapX, gapY: dynamicGapY };
+  const descendantWeights = computeDescendantWeights(people);
+
+  const branchWeightByLevel = new Map();
+  for(const level of levelKeys){
+    const branchWeights = new Map();
+    for(const person of levels.get(level) || []){
+      const branchKey = parentBranchKey(person);
+      const prev = branchWeights.get(branchKey) || 0;
+      branchWeights.set(branchKey, prev + (descendantWeights.get(person.id) || 1));
+    }
+    branchWeightByLevel.set(level, branchWeights);
+  }
+
+  const branchGapFor = (level, leftBranchKey, rightBranchKey) => {
+    const levelWeights = branchWeightByLevel.get(level);
+    const leftWeight = levelWeights?.get(leftBranchKey) || 1;
+    const rightWeight = levelWeights?.get(rightBranchKey) || 1;
+    const footprint = Math.max(leftWeight, rightWeight);
+    return nodeSize.gapX + 90 + Math.min(230, Math.sqrt(footprint) * 34);
+  };
+
   const positions = new Map();
   let minX = Infinity;
   let maxX = -Infinity;
@@ -2304,20 +2351,27 @@ function renderTree(){
   for(const level of levelKeys){
     const peopleAt = levels.get(level);
     const y = level * (nodeSize.h + nodeSize.gapY);
-    const branchGapX = nodeSize.gapX + 120;
     const widths = peopleAt.map(() => nodeSize.w);
     let totalWidth = 0;
     peopleAt.forEach((p, i) => {
       if(i > 0) totalWidth += nodeSize.gapX;
       const prev = peopleAt[i - 1];
-      if(prev && parentBranchKey(prev) !== parentBranchKey(p)) totalWidth += branchGapX;
+      if(prev){
+        const prevBranch = parentBranchKey(prev);
+        const currBranch = parentBranchKey(p);
+        if(prevBranch !== currBranch) totalWidth += branchGapFor(level, prevBranch, currBranch);
+      }
       totalWidth += widths[i];
     });
     let cursorX = -totalWidth / 2;
     peopleAt.forEach((p, i) => {
       if(i > 0) cursorX += nodeSize.gapX;
       const prev = peopleAt[i - 1];
-      if(prev && parentBranchKey(prev) !== parentBranchKey(p)) cursorX += branchGapX;
+      if(prev){
+        const prevBranch = parentBranchKey(prev);
+        const currBranch = parentBranchKey(p);
+        if(prevBranch !== currBranch) cursorX += branchGapFor(level, prevBranch, currBranch);
+      }
       const x = cursorX;
       positions.set(p.id, { x, y });
       minX = Math.min(minX, x);
