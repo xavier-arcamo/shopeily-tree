@@ -2288,163 +2288,25 @@ function renderTree(){
   const dynamicGapX = clamp(40, 90, 110 - maxPerLevel * 6);
   const dynamicGapY = clamp(40, 70, 70 - levelKeys.length * 2);
   const nodeSize = { w: 180, h: 84, gapX: dynamicGapX, gapY: dynamicGapY };
-
-  const personMap = new Map(people.map(p => [p.id, p]));
-  const peopleByPriority = [...people].sort((a,b) => {
-    const la = groupLevels.get(partnerGroups.groupIdByPerson.get(a.id)) || 0;
-    const lb = groupLevels.get(partnerGroups.groupIdByPerson.get(b.id)) || 0;
-    if(la !== lb) return la - lb;
-    return safeName(a).localeCompare(safeName(b));
-  });
-
-  const primaryParent = new Map();
-  for(const p of peopleByPriority){
-    for(const childId of (p.children || [])){
-      if(!personMap.has(childId) || primaryParent.has(childId)) continue;
-      primaryParent.set(childId, p.id);
-    }
-  }
-
-  const primaryChildren = new Map(people.map(p => [p.id, []]));
-  for(const [childId, parentId] of primaryParent.entries()){
-    if(primaryChildren.has(parentId)) primaryChildren.get(parentId).push(childId);
-  }
-
-  const childSort = (aId, bId) => {
-    const a = personMap.get(aId);
-    const b = personMap.get(bId);
-    const la = groupLevels.get(partnerGroups.groupIdByPerson.get(aId)) || 0;
-    const lb = groupLevels.get(partnerGroups.groupIdByPerson.get(bId)) || 0;
-    if(la !== lb) return la - lb;
-    return safeName(a).localeCompare(safeName(b));
-  };
-  for(const list of primaryChildren.values()) list.sort(childSort);
-
-  const minGap = nodeSize.gapX;
-  const localLayout = new Map();
-  const layoutStack = new Set();
-  const layoutSubtree = (nodeId) => {
-    if(localLayout.has(nodeId)) return localLayout.get(nodeId);
-    if(layoutStack.has(nodeId)){
-      const fallback = { center: 0, min: -nodeSize.w / 2, max: nodeSize.w / 2, childOffsets: new Map() };
-      localLayout.set(nodeId, fallback);
-      return fallback;
-    }
-    layoutStack.add(nodeId);
-
-    const children = primaryChildren.get(nodeId) || [];
-    if(children.length === 0){
-      const leaf = { center: 0, min: -nodeSize.w / 2, max: nodeSize.w / 2, childOffsets: new Map() };
-      localLayout.set(nodeId, leaf);
-      layoutStack.delete(nodeId);
-      return leaf;
-    }
-
-    const childOffsets = new Map();
-    let runningRight = -Infinity;
-    let spanLeft = Infinity;
-    let spanRight = -Infinity;
-
-    for(const childId of children){
-      const childLayout = layoutSubtree(childId);
-      let offset;
-      if(Number.isFinite(runningRight)){
-        offset = runningRight + minGap - childLayout.min;
-      }else{
-        offset = -childLayout.min;
-      }
-      childOffsets.set(childId, offset);
-      const childLeft = childLayout.min + offset;
-      const childRight = childLayout.max + offset;
-      spanLeft = Math.min(spanLeft, childLeft);
-      spanRight = Math.max(spanRight, childRight);
-      runningRight = childRight;
-    }
-
-    const childrenCenter = (spanLeft + spanRight) / 2;
-    for(const [childId, offset] of childOffsets.entries()){
-      childOffsets.set(childId, offset - childrenCenter);
-    }
-
-    const normalizedLeft = spanLeft - childrenCenter;
-    const normalizedRight = spanRight - childrenCenter;
-    const layout = {
-      center: 0,
-      min: Math.min(-nodeSize.w / 2, normalizedLeft),
-      max: Math.max(nodeSize.w / 2, normalizedRight),
-      childOffsets
-    };
-    localLayout.set(nodeId, layout);
-    layoutStack.delete(nodeId);
-    return layout;
-  };
-
-  const roots = peopleByPriority
-    .filter(p => !primaryParent.has(p.id))
-    .map(p => p.id);
-
-  if(roots.length === 0){
-    roots.push(...peopleByPriority.map(p => p.id));
-  }
-
-  const rootCenters = new Map();
-  let runningRootRight = -Infinity;
-  for(const rootId of roots){
-    const layout = layoutSubtree(rootId);
-    let rootCenter;
-    if(Number.isFinite(runningRootRight)){
-      rootCenter = runningRootRight + minGap - layout.min;
-    }else{
-      rootCenter = -layout.min;
-    }
-    rootCenters.set(rootId, rootCenter);
-    runningRootRight = layout.max + rootCenter;
-  }
-
   const positions = new Map();
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
-
-  const placed = new Set();
-  const placeNode = (nodeId, centerX) => {
-    if(placed.has(nodeId)) return;
-    const person = personMap.get(nodeId);
-    if(!person) return;
-    placed.add(nodeId);
-
-    const level = groupLevels.get(partnerGroups.groupIdByPerson.get(nodeId)) || 0;
+  for(const level of levelKeys){
+    const peopleAt = levels.get(level);
+    const totalWidth = peopleAt.length * (nodeSize.w + nodeSize.gapX) - nodeSize.gapX;
+    const offsetX = -totalWidth / 2;
     const y = level * (nodeSize.h + nodeSize.gapY);
-    const x = centerX - nodeSize.w / 2;
-    positions.set(nodeId, { x, y });
-
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x + nodeSize.w);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y + nodeSize.h);
-
-    const layout = localLayout.get(nodeId);
-    if(!layout) return;
-    for(const childId of (primaryChildren.get(nodeId) || [])){
-      const childOffset = layout.childOffsets.get(childId) || 0;
-      placeNode(childId, centerX + childOffset);
-    }
-  };
-
-  for(const rootId of roots){
-    placeNode(rootId, rootCenters.get(rootId) || 0);
+    peopleAt.forEach((p, i) => {
+      const x = offsetX + i * (nodeSize.w + nodeSize.gapX);
+      positions.set(p.id, { x, y });
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x + nodeSize.w);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y + nodeSize.h);
+    });
   }
-  for(const p of peopleByPriority){
-    if(!placed.has(p.id)) placeNode(p.id, 0);
-  }
-
-  const treeMid = (minX + maxX) / 2;
-  for(const pos of positions.values()){
-    pos.x -= treeMid;
-  }
-  minX -= treeMid;
-  maxX -= treeMid;
 
   const elbowPath = (start, end, mid) => {
     return `M ${start.x} ${start.y} L ${start.x} ${mid} L ${end.x} ${mid} L ${end.x} ${end.y}`;
